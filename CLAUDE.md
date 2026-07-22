@@ -31,8 +31,11 @@ See "7. Licensing policy" in [DESIGN.md](./DESIGN.md) for the rationale.
 
 ## Correctness baseline (known perft values)
 
-- Initial position: `depth1=30, depth2=900, depth3=25470, depth4=719731`
+- Initial position: `depth1=30, depth2=900, depth3=25470, depth4=719731, depth5=19861490, depth6=547581517`
 - Max-moves position `R8/2K1S1SSk/4B4/9/9/9/9/9/1L1L1L3 b RBGSNLP3g3n17p 1`: `depth1=593, depth2=105677`
+- Benchmark midgame position ("matsuri" / 指し手生成祭り): `l6nl/5+P1gk/2np1S3/p1p4Pp/3P2Sp1/1PPb2P1P/P5GS1/R8/LN4bKL w GR5pnsg 1`
+- These values assume **fully legal** generation: pawn-drop-mate (打ち歩詰め) moves must **not** be generated.
+- Beyond fixed values, verify by **differential testing against `shogi_legality_lite`** (MIT, same `shogi_core` types — compare full legal-move sets on arbitrary positions, as a dev-dependency).
 
 ## Benchmarks
 

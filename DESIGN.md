@@ -54,20 +54,34 @@ benches/          # movegen / perft
 - **Metrics**: (1) **perft** (nodes/sec; also serves as a correctness check); (2) **movegen alone** (ns per position); (3) **do/undo throughput**.
 - **Tooling**: `criterion`. Measurement assets for each library live in [`../benchmarks`](../benchmarks).
 - **Conditions**: `--release` / `lto = "fat"` / `codegen-units = 1`; same machine; with warm-up; a fixed position set; multiple trials with variance recorded; CPU architecture (x86_64 / aarch64) noted.
-- **Position set (fixed SFEN)**: initial position / a representative midgame position / **maximum-legal-move position** (`R8/2K1S1SSk/4B4/9/9/9/9/9/1L1L1L3 b RBGSNLP3g3n17p 1`) / check- and mate-adjacent positions.
-- **Fairness**: normalize every library to "full legal move generation" (account for pseudo-legal + validation vs fully-legal differences, callback vs `Vec`/`ArrayVec` API differences, and Python-binding boundary costs).
+- **Position set (fixed SFEN)**:
+  - initial position
+  - **"matsuri" midgame position** (指し手生成祭り, the standard movegen-benchmark position in the Japanese shogi-dev community; used by YaneuraOu's `bench` / `test genmoves`): `l6nl/5+P1gk/2np1S3/p1p4Pp/3P2Sp1/1PPb2P1P/P5GS1/R8/LN4bKL w GR5pnsg 1`
+  - **maximum-legal-move position** (`R8/2K1S1SSk/4B4/9/9/9/9/9/1L1L1L3 b RBGSNLP3g3n17p 1`)
+  - check- and mate-adjacent positions
+- **Fairness** — normalize every library to the same work before comparing:
+  - **Full legal move generation** (account for pseudo-legal + validation vs fully-legal differences, callback vs `Vec`/`ArrayVec` API differences, and Python-binding boundary costs).
+  - **Pawn-drop-mate (打ち歩詰め) exclusion**: legal movegen must not generate pawn drops that give immediate checkmate. Engines differ here and it is a known cause of perft mismatches (see the TalkChess thread in §6); zenmai excludes them, and comparisons must confirm each library does the same.
+  - **Bulk counting**: perft harnesses must agree on leaf handling. haitaka's perft example bulk-counts at depth 1 (cozy-chess style) instead of playing out leaf moves; our cross-library perft comparisons standardize on **leaf bulk counting** (and note it in results).
+  - **C++ engines' measurement method**: YaneuraOu is measured with its built-in `test genmoves` command (movegen throughput on the matsuri position) driven over USI; apery similarly via its own commands where available. cshogi ships no perft, so we write a small Python-side perft/movegen harness on its API (its Python-binding overhead is part of what the "practical stack" comparison measures — report it as such).
 
 ## 5. Comparison targets
 
 (submodules under [`../benchmarks`](../benchmarks))
 
-| Category | Library | Role | License |
-|---|---|---|---|
-| **Main rivals (Rust)** | **haitaka** / **apery_rust** | Targets to **beat directly** on perft/movegen | MIT / GPL-3.0 |
-| Self-baseline | **yasai (old 0.5.0)** | Basis for measuring the improvement | GPL-3.0 |
-| Reference (Rust) | rustshogi | Implementation-variation comparison | MIT |
-| Reference ceiling (C++) | YaneuraOu / apery | A sense of "how close can we get" | GPL-3.0 |
-| Reference (practical) | cshogi | Comparison with a practical Python stack | GPL-3.0 |
+| Category | Library | Role | License | Pin (as of 2026-07-22) | Upstream |
+|---|---|---|---|---|---|
+| **Main rival (Rust)** | **haitaka** | Target to **beat directly** on perft/movegen | MIT | v0.3.2+4 (2025-06-12) | dormant ~1 year (crates.io latest is also 0.3.2) |
+| **Main rival (Rust)** | **apery_rust** | Target to **beat directly** on perft/movegen | GPL-3.0 | v2.1.0+8 (2024-06-23) | dormant; builds on stable toolchain |
+| Self-baseline | **yasai (old 0.5.0)** | Basis for measuring the improvement | GPL-3.0 | 0.5.0+16 (2023-10-14) | dormant (intended: fixed baseline) |
+| Reference (Rust) | rustshogi | Implementation-variation comparison | MIT | 0.8.1+2 (2026-04-07) | active; note: it is a pyo3 extension module (Python-oriented) |
+| Reference ceiling (C++) | YaneuraOu | A sense of "how close can we get" | GPL-3.0 | v9.40+ master | active |
+| Reference ceiling (C++) | apery | A sense of "how close can we get" | GPL-3.0 | WCSC28+36 (2021-09-21) | dormant |
+| Reference (practical) | cshogi | Comparison with a practical Python stack | GPL-3.0 | v1.0.4 (2026-07-18) | active |
+
+**Pinning / update policy**: the `../benchmarks` submodules are **pinned** commits recorded in that repository (see its README). Comparison numbers are only meaningful against a recorded pin. Updates are deliberate: bump a submodule intentionally, record the new pin and date, and re-run baselines — never benchmark against a silently-drifted checkout. Dormant upstreams (apery, apery_rust, yasai, haitaka) double as stable, reproducible targets.
+
+Correctness oracle (not a speed target): [`shogi_legality_lite`](https://github.com/rust-shogi-crates/shogi_legality_lite) (MIT, same `shogi_core` types) — see §6.
 
 ## 6. Milestones
 
@@ -82,12 +96,22 @@ benches/          # movegen / perft
 
 ### Known perft values (correctness checks for M1/M4)
 
-| Position | depth 1 | depth 2 | depth 3 | depth 4 |
-|---|---|---|---|---|
-| Initial position | 30 | 900 | 25470 | 719731 |
-| Max-moves position ※ | 593 | 105677 | — | — |
+| Position | depth 1 | depth 2 | depth 3 | depth 4 | depth 5 | depth 6 |
+|---|---|---|---|---|---|---|
+| Initial position | 30 | 900 | 25470 | 719731 | 19861490 | 547581517 |
+| Max-moves position ※ | 593 | 105677 | — | — | — | — |
 
 ※ `R8/2K1S1SSk/4B4/9/9/9/9/9/1L1L1L3 b RBGSNLP3g3n17p 1`
+
+- Initial-position values through depth 5–6 are cross-confirmed by multiple independent engines ([shogi-l thread](https://groups.google.com/g/shogi-l/c/U7hmtThbk1k), [TalkChess "Shogi Perft numbers"](https://www.talkchess.com/forum3/viewtopic.php?t=71550)); the max-moves values come from [this Qiita article](https://qiita.com/ak11/items/8bd5f2bb0f5b014143c8) (also used in yasai's tests).
+- These counts assume **fully legal** generation, including **pawn-drop-mate (打ち歩詰め) exclusion** — a documented source of cross-engine perft disagreement (see the TalkChess thread).
+
+### Correctness verification (M1)
+
+Fixed perft values alone only cover a handful of positions. In addition:
+
+- **Differential testing against `shogi_legality_lite`** (MIT, [rust-shogi-crates](https://github.com/rust-shogi-crates/shogi_legality_lite)): it is slow but straightforward, and it shares `shogi_core` types, so the full legal-move **sets** (not just counts) can be compared directly on arbitrary positions. Use it as a dev-dependency oracle: random playouts from the fixed position set, asserting set-equality of legal moves at every node.
+- **Cross-perft against cshogi / YaneuraOu** for positions with no published values (e.g. matsuri-position perft): agreement between independent implementations establishes the reference number; record it here once confirmed.
 
 ## 7. Licensing policy (important)
 
@@ -125,3 +149,12 @@ Most of the code will be written by AI (Claude Code). The question is not "was G
 - Keep a **git history** that shows incremental, original development.
 
 > This section is a general summary of how licensing works, not legal advice. The copyright status of AI training data and generated output is an evolving area. For commercial or high-stakes releases, consult a professional.
+
+## 8. Risks & mitigations
+
+- **`shogi_core` is dormant** (latest release 0.1.5, published 2022-08; no releases since). zenmai builds its public API on it, so:
+  - Treat its API as frozen — depend only on what 0.1.5 already provides; do not plan around hoped-for upstream changes.
+  - If a blocking bug or missing capability appears, it is MIT: forking (or vendoring the needed types) is an acceptable fallback that preserves the "swap the dependency" migration story for `tsumeshogi-solver`.
+- **Perft-convention mismatches can fake regressions or wins.** Pawn-drop-mate handling and leaf bulk-counting differ across libraries (see §4 Fairness, §6). Every cross-library number must state the convention used; never compare numbers produced under different conventions.
+- **Benchmark-target drift.** Comparison targets are pinned submodules in `../benchmarks`; results are only comparable against a recorded pin (see §5 pinning policy). Active upstreams (YaneuraOu, cshogi, rustshogi) will move — bump deliberately and re-baseline.
+- **Feasibility of the "beat haitaka / apery_rust" goal** (assessed 2026-07-22): haitaka self-describes as experimental (no engine adoption yet, tuned/tested mainly on Apple M2, no hand-written SIMD); yasai demonstrated that hand-tuned SIMD is competitive with apery_rust. Combining haitaka-style const tables / Qugiy with yasai-style SIMD (reimplemented, per §7) leaves clear headroom, so the goal is considered achievable — but it is validated empirically at M5, not assumed.
