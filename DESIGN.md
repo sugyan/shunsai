@@ -1,6 +1,6 @@
-# zenmai — Design Document
+# shunsai — Design Document
 
-Design, implementation approach, benchmarking method, comparison targets, milestones, and licensing policy for `zenmai`.
+Design, implementation approach, benchmarking method, comparison targets, milestones, and licensing policy for `shunsai`.
 Current status: **design stage (no code yet).**
 
 ## 1. Background & goal
@@ -61,7 +61,7 @@ benches/          # movegen / perft
   - check- and mate-adjacent positions
 - **Fairness** — normalize every library to the same work before comparing:
   - **Full legal move generation** (account for pseudo-legal + validation vs fully-legal differences, callback vs `Vec`/`ArrayVec` API differences, and Python-binding boundary costs).
-  - **Pawn-drop-mate (打ち歩詰め) exclusion**: legal movegen must not generate pawn drops that give immediate checkmate. Engines differ here and it is a known cause of perft mismatches (see the TalkChess thread in §6); zenmai excludes them, and comparisons must confirm each library does the same.
+  - **Pawn-drop-mate (打ち歩詰め) exclusion**: legal movegen must not generate pawn drops that give immediate checkmate. Engines differ here and it is a known cause of perft mismatches (see the TalkChess thread in §6); shunsai excludes them, and comparisons must confirm each library does the same.
   - **Bulk counting**: perft harnesses must agree on leaf handling. haitaka's perft example bulk-counts at depth 1 (cozy-chess style) instead of playing out leaf moves; our cross-library perft comparisons standardize on **leaf bulk counting** (and note it in results).
   - **C++ engines' measurement method**: YaneuraOu is measured with its built-in `test genmoves` command (movegen throughput on the matsuri position) driven over USI; apery similarly via its own commands where available. cshogi ships no perft, so we write a small Python-side perft/movegen harness on its API (its Python-binding overhead is part of what the "practical stack" comparison measures — report it as such).
 
@@ -91,7 +91,7 @@ Correctness oracle (not a speed target): [`shogi_legality_lite`](https://github.
 - **M3**: refine the move-generation API into the callback form (keeping `legal_moves()` compatibility).
 - **M4**: evaluate optimization candidates (Qugiy / magic / SIMD / const tables / incremental AttackInfo / layout) and **adopt by benchmark comparison**.
 - **M5**: numerically confirm we **beat** haitaka / apery_rust.
-- **M6**: switch `tsumeshogi-solver` to depend on `zenmai`; validate the migration.
+- **M6**: switch `tsumeshogi-solver` to depend on `shunsai`; validate the migration.
 - **Later**: publish v0.1.0 on crates.io (`keywords = ["shogi","move-generation","bitboard","game","usi"]`, `categories = ["game-development","algorithms"]`).
 
 ### Known perft values (correctness checks for M1/M4)
@@ -129,7 +129,7 @@ Copyright protects **expression (the actual code)**, not ideas, algorithms, or t
 
 - **Adopting only a technique** (implementing Qugiy, magic bitboards, etc. yourself from public write-ups) → not bound by the source's license.
 - **Copying / line-by-line porting of code** → creates a derivative work and **inherits GPLv3**.
-- ⚠️ The old yasai is itself GPLv3 (derived from apery_rust). **Porting yasai's code would make zenmai GPLv3 too**, so to stay permissive we reimplement yasai as well.
+- ⚠️ The old yasai is itself GPLv3 (derived from apery_rust). **Porting yasai's code would make shunsai GPLv3 too**, so to stay permissive we reimplement yasai as well.
 
 ### Rule: do not reuse GPL code
 
@@ -152,7 +152,7 @@ Most of the code will be written by AI (Claude Code). The question is not "was G
 
 ## 8. Risks & mitigations
 
-- **`shogi_core` is dormant** (latest release 0.1.5, published 2022-08; no releases since). zenmai builds its public API on it, so:
+- **`shogi_core` is dormant** (latest release 0.1.5, published 2022-08; no releases since). shunsai builds its public API on it, so:
   - Treat its API as frozen — depend only on what 0.1.5 already provides; do not plan around hoped-for upstream changes.
   - If a blocking bug or missing capability appears, it is MIT: forking (or vendoring the needed types) is an acceptable fallback that preserves the "swap the dependency" migration story for `tsumeshogi-solver`.
 - **Perft-convention mismatches can fake regressions or wins.** Pawn-drop-mate handling and leaf bulk-counting differ across libraries (see §4 Fairness, §6). Every cross-library number must state the convention used; never compare numbers produced under different conventions.

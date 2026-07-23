@@ -1,10 +1,10 @@
-# CLAUDE.md — zenmai project instructions
+# CLAUDE.md — shunsai project instructions
 
 This file defines project rules that every future implementation session (Claude Code) **must follow**. For background and detail, see [DESIGN.md](./DESIGN.md).
 
 ## Project overview
 
-`zenmai` is a Rust **shogi legal-move-generation engine**. It is the successor to [`sugyan/yasai`](https://github.com/sugyan/yasai), rebuilt from scratch with **speed** as the goal. Fundamental types come from [`shogi_core`](https://github.com/rust-shogi-crates/shogi_core) (MIT).
+`shunsai` is a Rust **shogi legal-move-generation engine**. It is the successor to [`sugyan/yasai`](https://github.com/sugyan/yasai), rebuilt from scratch with **speed** as the goal. Fundamental types come from [`shogi_core`](https://github.com/rust-shogi-crates/shogi_core) (MIT).
 
 - **Scope**: movegen + position only. Do not touch the **non-goals** (kifu I/O, evaluation, search, tsume solvers).
 - **Approach**: build a simple, correct implementation first (validate with known perft values), then decide the optimization strategy (Qugiy / magic / SIMD, etc.) by benchmarking. **Do not commit to a specific technique up front.**

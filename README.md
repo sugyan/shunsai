@@ -1,8 +1,8 @@
-# zenmai
+# shunsai
 
-**Fast shogi legal move generator — the mainspring of your shogi AI.**
+**Fast shogi legal move generator — SHogi's Ultra-fast Next-gen Successor, for AI.**
 
-`zenmai` is a Rust library for high-speed generation of legal moves in [Shogi](https://en.wikipedia.org/wiki/Shogi). It is the successor to [`sugyan/yasai`](https://github.com/sugyan/yasai) ("Yet Another Shogi library, for AI"), redesigned from the inside out to be one of the fastest shogi move generators in Rust.
+`shunsai` is a Rust library for high-speed generation of legal moves in [Shogi](https://en.wikipedia.org/wiki/Shogi). It is the successor to [`sugyan/yasai`](https://github.com/sugyan/yasai) ("Yet Another Shogi library, for AI"), redesigned from the inside out to be one of the fastest shogi move generators in Rust.
 
 > ⚠️ **Status: design stage (no code yet).** This repository currently contains design documents only; implementation has not started. See [DESIGN.md](./DESIGN.md).
 
@@ -14,19 +14,19 @@
 
 ### Non-goals
 
-Kifu I/O (SFEN/USI/KIF/CSA), evaluation functions, search, and tsume (mate) solvers are **out of scope**. zenmai stays a lean, fast engine.
+Kifu I/O (SFEN/USI/KIF/CSA), evaluation functions, search, and tsume (mate) solvers are **out of scope**. shunsai stays a lean, fast engine.
 
 ## The name
 
-**zenmai = 薇 (ぜんまい).**
+**shunsai = 旬菜 (しゅんさい).**
 
-- **薇** is a wild vegetable (royal fern, a *sansai*), continuing the culinary lineage of [`yasai`](https://github.com/sugyan/yasai) (野菜, "vegetables").
-- At the same time, **ゼンマイ means "mainspring"** — the coiled spring that drives a clockwork mechanism, i.e. the *engine* that powers it ("the mainspring of your shogi AI").
-- It ends in **"AI"**, echoing *yasai*. As a loose backronym: **Z**ippy **E**ngine, **N**ext-gen **M**ovegen, for **AI**.
+- **旬菜** means "seasonal vegetables at their peak" — the freshest produce of the season — continuing the culinary lineage of [`yasai`](https://github.com/sugyan/yasai) (野菜, "vegetables").
+- At the same time, it is a homophone of **俊才/駿才 — "a swift prodigy"**: the 俊 of 俊足 (swift-footed) and the 駿 of 駿馬 (a fleet steed). Speed is built into the sound of the name.
+- It ends in **"ai"**, echoing *yasai*. As a backronym: **SH**ogi's **U**ltra-fast **N**ext-gen **S**uccessor, for **AI**.
 
 ## How it will be built
 
-Rather than committing to a particular optimization up front, zenmai starts with a **simple, correct implementation** (validated against known perft values) and then decides the optimization strategy (Qugiy / magic bitboards / SIMD, etc.) **by benchmarking**. See [DESIGN.md](./DESIGN.md).
+Rather than committing to a particular optimization up front, shunsai starts with a **simple, correct implementation** (validated against known perft values) and then decides the optimization strategy (Qugiy / magic bitboards / SIMD, etc.) **by benchmarking**. See [DESIGN.md](./DESIGN.md).
 
 ## License
 
