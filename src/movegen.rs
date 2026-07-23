@@ -17,6 +17,12 @@ impl Position {
     /// All legal moves for the side to move, including pawn-drop-mate
     /// exclusion.
     ///
+    /// The opponent's king square is never a destination: in illegal
+    /// positions where that king could already be captured (unreachable
+    /// through legal play, but constructible via [`Position::new`]), no
+    /// king-capture move is generated — the rest of the result is
+    /// unspecified there, but this function does not panic.
+    ///
     /// A callback-style API is planned (M3); this allocating form will stay
     /// as a compatibility wrapper.
     pub fn legal_moves(&self) -> Vec<Move> {
@@ -120,13 +126,20 @@ fn generate_normal(
     checkers: Bitboard,
     out: &mut Vec<Move>,
 ) {
+    // Never target our own pieces, nor the opponent's king: the latter is
+    // only reachable in illegal positions, and "capturing" it would try to
+    // send a king to hand in do_move.
+    let targets = match position.king_square(us.flip()) {
+        Some(enemy_king) => !(our | Bitboard::single(enemy_king)),
+        None => !our,
+    };
     let king = match king {
         Some(king) => king,
         None => {
             // No king to endanger: every pseudo-legal move is legal.
             for from in our {
                 let piece = position.piece_at(from).unwrap();
-                let attacks = tables::attacks_of(piece, from, occupied) & !our;
+                let attacks = tables::attacks_of(piece, from, occupied) & targets;
                 for to in attacks {
                     push_normal(us, piece.piece_kind(), from, to, out);
                 }
@@ -144,7 +157,7 @@ fn generate_normal(
         let piece = position.piece_at(from).unwrap();
         let is_king = from == king;
         let needs_test = in_check || is_king || pin_candidates.contains(from);
-        let attacks = tables::attacks_of(piece, from, occupied) & !our;
+        let attacks = tables::attacks_of(piece, from, occupied) & targets;
         for to in attacks {
             if needs_test && !king_safe_after(position, us, king, from, to, occupied) {
                 continue;

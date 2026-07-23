@@ -93,6 +93,25 @@ fn dead_piece_squares_are_excluded() {
     }
 }
 
+/// A position where the opponent's king is en prise cannot occur in legal
+/// play, but it can be constructed. King captures must never be generated
+/// (do_move would even panic trying to send the king to hand), and playing
+/// the generated moves must not panic.
+#[test]
+fn king_capture_is_never_generated() {
+    // Black rook on 5e attacks the white king on 5a along the open file.
+    let sfen = "4k4/9/9/9/4R4/9/9/9/4K4 b - 1";
+    let partial = PartialPosition::from_usi(&format!("sfen {sfen}")).unwrap();
+    let position = Position::new(partial);
+    let moves = position.legal_moves();
+    assert!(!moves.is_empty());
+    for mv in moves {
+        assert_ne!(mv.to(), sq(5, 1), "king capture generated: {mv:?}");
+        let mut next = position.clone();
+        next.do_move(mv);
+    }
+}
+
 /// A pinned piece may only move along the pin line.
 #[test]
 fn pinned_piece_moves_are_restricted() {
