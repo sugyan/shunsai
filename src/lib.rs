@@ -2,6 +2,7 @@
 
 mod bitboard;
 mod tables;
+mod zobrist;
 
 pub use bitboard::Bitboard;
 pub use shogi_core;

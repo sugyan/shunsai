@@ -100,14 +100,12 @@ pub(crate) fn king_attacks(square: Square) -> Bitboard {
     KING_ATTACKS[square.array_index()]
 }
 
-/// The four orthogonally adjacent squares (the step part of a promoted rook's
-/// diagonal complement is [`diagonal_attacks`]; this one belongs to the
-/// promoted bishop).
+/// The four orthogonally adjacent squares (the promoted bishop's extra steps).
 pub(crate) fn orthogonal_attacks(square: Square) -> Bitboard {
     ORTHOGONAL_ATTACKS[square.array_index()]
 }
 
-/// The four diagonally adjacent squares.
+/// The four diagonally adjacent squares (the promoted rook's extra steps).
 pub(crate) fn diagonal_attacks(square: Square) -> Bitboard {
     DIAGONAL_ATTACKS[square.array_index()]
 }
