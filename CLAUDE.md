@@ -19,7 +19,7 @@ The project license is **`MIT OR Apache-2.0`**. To keep it clean, obey the follo
 - When reusing from MIT sources, **retain the copyright notices**
 
 **Must not reference / copy (GPL-3.0)**
-- **apery / apery_rust / YaneuraOu / cshogi / the old yasai** (present under `../benchmarks/`, but GPL)
+- **apery / apery_rust / YaneuraOu / cshogi / rshogi / Fairy-Stockfish / the old yasai** (present under `../benchmarks/` — a **local-only, unpublished** sibling repo, not part of this repository — all GPL)
 - Understanding the technique and **writing it yourself** is fine, but **do not read-and-copy or port the code verbatim** (that inherits GPLv3).
 - ⚠️ The old yasai is sugyan's own work but is **GPL-3.0** (derived from apery_rust). Porting yasai's code is **also forbidden** — reimplement it to stay permissive.
 
@@ -39,4 +39,4 @@ See "7. Licensing policy" in [DESIGN.md](./DESIGN.md) for the rationale.
 
 ## Benchmarks
 
-Measure perft / movegen / do-undo with `criterion`. Comparison targets are in [`../benchmarks`](../benchmarks) (goal: **beat haitaka / apery_rust**).
+Measure perft / movegen / do-undo with `criterion`. Comparison targets are pinned submodules in `../benchmarks` — a **local-only, unpublished sibling repository** (no remote; not visible from this GitHub repo — see its README when working locally). Goal: **beat haitaka / apery_rust**.
