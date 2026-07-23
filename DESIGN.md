@@ -1,7 +1,7 @@
 # shunsai — Design Document
 
 Design, implementation approach, benchmarking method, comparison targets, milestones, and licensing policy for `shunsai`.
-Current status: **design stage (no code yet).**
+Current status: **M1 complete — simple, correct implementation validated against known perft values.**
 
 ## 1. Background & goal
 
@@ -49,6 +49,14 @@ examples/perft.rs
 benches/          # movegen / perft
 ```
 
+### Implementation decision log
+
+Rationale for decisions made during implementation, recorded so they can be revisited deliberately instead of re-litigated.
+
+- **2026-07-23 — own `u128` Bitboard instead of `shogi_core::Bitboard`.** `shogi_core` 0.1.5 does ship a `[u64; 2]` bitboard, and M1 alone could have been built on it. We keep a crate-internal type because the optimization phase (M4) changes exactly this layer: both the representation (`u128` / two words / SIMD lanes) and the *set of operations needed* differ per slider technique (Qugiy wants byte-swapped pairs and subtraction tricks, magic wants multiply/shift on raw words, SIMD wants explicit lanes), and the dormant upstream cannot be extended. Bit order matches `Square::array_index()`, so interop via `shogi_core::Bitboard::to_u128` stays trivial.
+- **2026-07-23 — the swap boundary for slider-attack techniques is the attack-function signatures in `tables.rs`** (`lance_attacks` / `bishop_attacks` / `rook_attacks`, ...), not a Bitboard trait. M4 candidates are added as feature-switched backends with identical signatures. A trait over Bitboard was considered and rejected: the required operation set varies per technique (the abstraction would leak or widen every time), and generics would either infect the public API (`Position<B>`) or force dyn dispatch into hot loops.
+- **2026-07-23 — Zobrist keys from an inline fixed-seed splitmix64**, not a seedable RNG crate (as the old yasai did): no extra runtime dependency, keys stay byte-for-byte reproducible independent of any crate's version (`rand`'s `StdRng`/`SmallRng` explicitly do not guarantee algorithm stability across versions), and it converts trivially to `const fn` when tables are const-ified (M4). Embedding a tiny PRNG for Zobrist init is standard engine practice; splitmix64 itself is a public-domain (CC0) algorithm by Sebastiano Vigna.
+
 ## 4. Benchmarking method
 
 - **Metrics**: (1) **perft** (nodes/sec; also serves as a correctness check); (2) **movegen alone** (ns per position); (3) **do/undo throughput**.
@@ -85,8 +93,8 @@ Correctness oracle (not a speed target): [`shogi_legality_lite`](https://github.
 
 ## 6. Milestones
 
-- **M0 (current)**: name & concept fixed; design documents. **No code.** Licensing policy decided.
-- **M1**: **simple, correct implementation** (Position + naive movegen) matching known perft values.
+- **M0 (done)**: name & concept fixed; design documents. Licensing policy decided.
+- **M1 (done)**: **simple, correct implementation** (Position + naive movegen) matching known perft values.
 - **M2**: benchmark harness (criterion + `../benchmarks` integration); record the naive implementation as baseline.
 - **M3**: refine the move-generation API into the callback form (keeping `legal_moves()` compatibility).
 - **M4**: evaluate optimization candidates (Qugiy / magic / SIMD / const tables / incremental AttackInfo / layout) and **adopt by benchmark comparison**.
