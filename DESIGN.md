@@ -1,7 +1,7 @@
 # shunsai — Design Document
 
 Design, implementation approach, benchmarking method, comparison targets, milestones, and licensing policy for `shunsai`.
-Current status: **design stage (no code yet).**
+Current status: **M1 complete — simple, correct implementation validated against known perft values.**
 
 ## 1. Background & goal
 
@@ -85,8 +85,8 @@ Correctness oracle (not a speed target): [`shogi_legality_lite`](https://github.
 
 ## 6. Milestones
 
-- **M0 (current)**: name & concept fixed; design documents. **No code.** Licensing policy decided.
-- **M1**: **simple, correct implementation** (Position + naive movegen) matching known perft values.
+- **M0 (done)**: name & concept fixed; design documents. Licensing policy decided.
+- **M1 (done)**: **simple, correct implementation** (Position + naive movegen) matching known perft values.
 - **M2**: benchmark harness (criterion + `../benchmarks` integration); record the naive implementation as baseline.
 - **M3**: refine the move-generation API into the callback form (keeping `legal_moves()` compatibility).
 - **M4**: evaluate optimization candidates (Qugiy / magic / SIMD / const tables / incremental AttackInfo / layout) and **adopt by benchmark comparison**.

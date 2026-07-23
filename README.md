@@ -4,7 +4,7 @@
 
 `shunsai` is a Rust library for high-speed generation of legal moves in [Shogi](https://en.wikipedia.org/wiki/Shogi). It is the successor to [`sugyan/yasai`](https://github.com/sugyan/yasai) ("Yet Another Shogi library, for AI"), redesigned from the inside out to be one of the fastest shogi move generators in Rust.
 
-> ⚠️ **Status: design stage (no code yet).** This repository currently contains design documents only; implementation has not started. See [DESIGN.md](./DESIGN.md).
+> ⚠️ **Status: M1 — simple, correct implementation.** Fully legal move generation (including pawn-drop-mate exclusion) validated against known perft values and differential-tested against `shogi_legality_lite`. No optimization yet; benchmarking (M2) comes next. See [DESIGN.md](./DESIGN.md).
 
 ## Concept
 
