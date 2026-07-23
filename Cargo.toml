@@ -1,0 +1,23 @@
+[package]
+name = "shunsai"
+version = "0.1.0"
+edition = "2024"
+authors = ["sugyan"]
+description = "Fast shogi legal move generator — SHogi's Ultra-fast Next-gen Successor, for AI"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/sugyan/shunsai"
+readme = "README.md"
+keywords = ["shogi", "move-generation", "bitboard", "game", "usi"]
+categories = ["game-development", "algorithms"]
+
+[dependencies]
+shogi_core = "0.1.5"
+
+[dev-dependencies]
+shogi_legality_lite = "0.1"
+shogi_usi_parser = "0.1"
+
+# Benchmark conditions from DESIGN.md §4 (applies to examples/tests built here)
+[profile.release]
+lto = "fat"
+codegen-units = 1
