@@ -110,12 +110,13 @@ Correctness oracle (not a speed target): [`shogi_legality_lite`](https://github.
 |---|---|---|---|---|---|---|
 | Initial position | 30 | 900 | 25470 | 719731 | 19861490 | 547581517 |
 | Matsuri position | 207 | 28684 | 4809015 | 516925165 | — | — |
-| Max-moves position ※ | 593 | 105677 | — | — | — | — |
+| Max-moves position ※ | 593 | 105677 | 53393368 | 9342410965 | — | — |
 
 ※ `R8/2K1S1SSk/4B4/9/9/9/9/9/1L1L1L3 b RBGSNLP3g3n17p 1`
 
 - Initial-position values through depth 5–6 are cross-confirmed by multiple independent engines ([shogi-l thread](https://groups.google.com/g/shogi-l/c/U7hmtThbk1k), [TalkChess "Shogi Perft numbers"](https://www.talkchess.com/forum3/viewtopic.php?t=71550)); the max-moves values come from [this Qiita article](https://qiita.com/ak11/items/8bd5f2bb0f5b014143c8) (also used in yasai's tests).
 - Matsuri values confirmed 2026-07-23 via the `../benchmarks/perft` harness: nine independent implementations agree (shunsai, haitaka, yasai, apery_rust, rshogi, YaneuraOu, apery, cshogi, Fairy-Stockfish), matching the expected values hardcoded in YaneuraOu's own test suite.
+- Max-moves depth 3–4 established 2026-07-23 by 8-engine consensus (same harness; depth 3 is also asserted in yasai's upstream bench). Fairy-Stockfish is excluded there by convention: it *generates* pawn-drop-mate moves and enforces the rule as a game result, so its counts run high on drop-heavy trees (+6369 at depth 3) — a live example of the §4 fairness warning.
 - These counts assume **fully legal** generation, including **pawn-drop-mate (打ち歩詰め) exclusion** — a documented source of cross-engine perft disagreement (see the TalkChess thread).
 
 ### Correctness verification (M1)

@@ -53,6 +53,15 @@ fn max_moves_position() {
     assert_eq!(perft_sfen(MAX_MOVES_SFEN, 2), 105677);
 }
 
+/// Depth 3 established 2026-07-23 by 8-engine consensus via the local
+/// `../benchmarks/perft` harness (also asserted in yasai's upstream bench).
+/// Depth 4 (9342410965) is confirmed too but takes minutes — not asserted.
+#[test]
+#[ignore = "slow; run with --release -- --ignored"]
+fn max_moves_position_deep() {
+    assert_eq!(perft_sfen(MAX_MOVES_SFEN, 3), 53393368);
+}
+
 /// Matsuri values confirmed 2026-07-23 by cross-perft agreement of nine
 /// independent implementations (shunsai, haitaka, yasai, apery_rust,
 /// rshogi, YaneuraOu, apery, cshogi, Fairy-Stockfish via the local
