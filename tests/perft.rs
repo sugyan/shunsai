@@ -53,11 +53,20 @@ fn max_moves_position() {
     assert_eq!(perft_sfen(MAX_MOVES_SFEN, 2), 105677);
 }
 
-/// No independently confirmed perft values for the matsuri position yet
-/// (DESIGN.md: establish them by cross-perft against cshogi / YaneuraOu);
-/// until then this is a smoke test, and the depth-1/2 counts are checked
-/// against the `shogi_legality_lite` oracle in `differential.rs`.
+/// Matsuri values confirmed 2026-07-23 by cross-perft agreement of nine
+/// independent implementations (shunsai, haitaka, yasai, apery_rust,
+/// rshogi, YaneuraOu, apery, cshogi, Fairy-Stockfish via the local
+/// `../benchmarks/perft` harness); they also match the expected values
+/// hardcoded in YaneuraOu's own test suite (source/position.cpp).
 #[test]
-fn matsuri_position_smoke() {
-    assert!(perft_sfen(MATSURI_SFEN, 2) > 0);
+fn matsuri_position() {
+    assert_eq!(perft_sfen(MATSURI_SFEN, 1), 207);
+    assert_eq!(perft_sfen(MATSURI_SFEN, 2), 28684);
+    assert_eq!(perft_sfen(MATSURI_SFEN, 3), 4809015);
+}
+
+#[test]
+#[ignore = "slow; run with --release -- --ignored"]
+fn matsuri_position_deep() {
+    assert_eq!(perft_sfen(MATSURI_SFEN, 4), 516925165);
 }

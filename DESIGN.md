@@ -109,11 +109,13 @@ Correctness oracle (not a speed target): [`shogi_legality_lite`](https://github.
 | Position | depth 1 | depth 2 | depth 3 | depth 4 | depth 5 | depth 6 |
 |---|---|---|---|---|---|---|
 | Initial position | 30 | 900 | 25470 | 719731 | 19861490 | 547581517 |
+| Matsuri position | 207 | 28684 | 4809015 | 516925165 | — | — |
 | Max-moves position ※ | 593 | 105677 | — | — | — | — |
 
 ※ `R8/2K1S1SSk/4B4/9/9/9/9/9/1L1L1L3 b RBGSNLP3g3n17p 1`
 
 - Initial-position values through depth 5–6 are cross-confirmed by multiple independent engines ([shogi-l thread](https://groups.google.com/g/shogi-l/c/U7hmtThbk1k), [TalkChess "Shogi Perft numbers"](https://www.talkchess.com/forum3/viewtopic.php?t=71550)); the max-moves values come from [this Qiita article](https://qiita.com/ak11/items/8bd5f2bb0f5b014143c8) (also used in yasai's tests).
+- Matsuri values confirmed 2026-07-23 via the `../benchmarks/perft` harness: nine independent implementations agree (shunsai, haitaka, yasai, apery_rust, rshogi, YaneuraOu, apery, cshogi, Fairy-Stockfish), matching the expected values hardcoded in YaneuraOu's own test suite.
 - These counts assume **fully legal** generation, including **pawn-drop-mate (打ち歩詰め) exclusion** — a documented source of cross-engine perft disagreement (see the TalkChess thread).
 
 ### Correctness verification (M1)
@@ -121,7 +123,7 @@ Correctness oracle (not a speed target): [`shogi_legality_lite`](https://github.
 Fixed perft values alone only cover a handful of positions. In addition:
 
 - **Differential testing against `shogi_legality_lite`** (MIT, [rust-shogi-crates](https://github.com/rust-shogi-crates/shogi_legality_lite)): it is slow but straightforward, and it shares `shogi_core` types, so the full legal-move **sets** (not just counts) can be compared directly on arbitrary positions. Use it as a dev-dependency oracle: random playouts from the fixed position set, asserting set-equality of legal moves at every node.
-- **Cross-perft against cshogi / YaneuraOu** for positions with no published values (e.g. matsuri-position perft): agreement between independent implementations establishes the reference number; record it here once confirmed.
+- **Cross-perft against cshogi / YaneuraOu** for positions with no published values: agreement between independent implementations establishes the reference number; record it here once confirmed. *(Done for the matsuri position, 2026-07-23 — see the known-values table above. Max-moves depth 3+ remains consensus-only in the `../benchmarks/perft` harness.)*
 
 ## 7. Licensing policy (important)
 
