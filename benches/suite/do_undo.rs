@@ -2,10 +2,10 @@
 //! sequences (`benches/positions/games-v1.usi`), with no movegen in the
 //! measured loop. Elements = moves, i.e. one element is one do+undo pair.
 
-mod common;
-
-use criterion::{Criterion, Throughput, criterion_group, criterion_main};
+use criterion::{Criterion, Throughput, criterion_group};
 use shunsai::Position;
+
+use crate::common;
 
 fn bench_do_undo(c: &mut Criterion) {
     let games = common::fixture_games();
@@ -43,4 +43,3 @@ fn bench_do_undo(c: &mut Criterion) {
 }
 
 criterion_group!(benches, bench_do_undo);
-criterion_main!(benches);

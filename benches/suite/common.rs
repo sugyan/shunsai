@@ -1,7 +1,4 @@
-//! Helpers shared between bench targets (each `[[bench]]` compiles this
-//! file separately via `mod common;`).
-
-#![allow(dead_code)]
+//! Helpers shared by the bench-suite groups.
 
 use shogi_core::{Color, Move, PartialPosition, Piece};
 use shogi_usi_parser::FromUsi;

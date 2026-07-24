@@ -28,22 +28,11 @@ shogi_usi_parser = "0.1"
 [lib]
 bench = false
 
+# Single bench target; the groups live in benches/suite/ and the internals
+# group is compiled in via the bench-internals feature.
 [[bench]]
-name = "perft"
+name = "suite"
 harness = false
-
-[[bench]]
-name = "movegen"
-harness = false
-
-[[bench]]
-name = "do_undo"
-harness = false
-
-[[bench]]
-name = "internals"
-harness = false
-required-features = ["bench-internals"]
 
 # Benchmark conditions from DESIGN.md §4 (applies to examples/tests built here)
 [profile.release]

@@ -1,13 +1,11 @@
 //! Perft throughput (nodes/sec) on the fixed positions of DESIGN.md §4.
 
-mod common;
-
 use std::time::Duration;
 
-use criterion::{
-    BenchmarkId, Criterion, SamplingMode, Throughput, criterion_group, criterion_main,
-};
+use criterion::{BenchmarkId, Criterion, SamplingMode, Throughput, criterion_group};
 use shunsai::Position;
+
+use crate::common;
 
 /// Identical to `tests/perft.rs` (leaf bulk counting).
 fn perft(position: &mut Position, depth: u32) -> u64 {
@@ -51,4 +49,3 @@ fn bench_perft(c: &mut Criterion) {
 }
 
 criterion_group!(benches, bench_perft);
-criterion_main!(benches);

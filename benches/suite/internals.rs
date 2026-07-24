@@ -5,11 +5,11 @@
 //! Each id sweeps all 81 squares of the three fixed positions with their
 //! real occupancy, so Elements = calls and throughput is calls/sec.
 
-mod common;
-
-use criterion::{Criterion, Throughput, criterion_group, criterion_main};
+use criterion::{Criterion, Throughput, criterion_group};
 use shunsai::shogi_core::{Color, Square};
 use shunsai::{Bitboard, Position, internals};
+
+use crate::common;
 
 fn bench_internals(c: &mut Criterion) {
     let positions: Vec<Position> = ["startpos", common::MATSURI_SFEN, common::MAX_MOVES_SFEN]
@@ -80,4 +80,3 @@ fn bench_internals(c: &mut Criterion) {
 }
 
 criterion_group!(benches, bench_internals);
-criterion_main!(benches);

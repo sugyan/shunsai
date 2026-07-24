@@ -4,10 +4,10 @@
 //! Measures the M1 allocating `Vec` API; the M3 callback API will get new
 //! `-cb` ids (bench ids are append-only, see BENCHMARKS.md).
 
-mod common;
-
-use criterion::{Criterion, Throughput, criterion_group, criterion_main};
+use criterion::{Criterion, Throughput, criterion_group};
 use shunsai::Position;
+
+use crate::common;
 
 fn bench_movegen(c: &mut Criterion) {
     let mut group = c.benchmark_group("movegen");
@@ -48,4 +48,3 @@ fn bench_movegen(c: &mut Criterion) {
 }
 
 criterion_group!(benches, bench_movegen);
-criterion_main!(benches);

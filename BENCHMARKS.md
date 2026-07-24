@@ -12,8 +12,9 @@ suite.
 cargo bench --features bench-internals
 ```
 
-Without the feature, cargo silently skips the `internals` bench target and
-runs the other three. Useful variants:
+The whole suite is one bench target (`benches/suite/`); without the
+feature, the `internals` group is compiled out and the rest runs. Useful
+variants:
 
 ```bash
 cargo bench --features bench-internals movegen
