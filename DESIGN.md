@@ -1,7 +1,7 @@
 # shunsai — Design Document
 
 Design, implementation approach, benchmarking method, comparison targets, milestones, and licensing policy for `shunsai`.
-Current status: **M1 complete — simple, correct implementation validated against known perft values.**
+Current status: **M2 complete — benchmark harness in place; naive implementation recorded as baseline.**
 
 ## 1. Background & goal
 
@@ -57,6 +57,9 @@ Rationale for decisions made during implementation, recorded so they can be revi
 - **2026-07-23 — the swap boundary for slider-attack techniques is the attack-function signatures in `tables.rs`** (`lance_attacks` / `bishop_attacks` / `rook_attacks`, ...), not a Bitboard trait. M4 candidates are added as feature-switched backends with identical signatures. A trait over Bitboard was considered and rejected: the required operation set varies per technique (the abstraction would leak or widen every time), and generics would either infect the public API (`Position<B>`) or force dyn dispatch into hot loops.
 - **2026-07-23 — benchmark targets: rustshogi replaced by rshogi; Fairy-Stockfish added.** rustshogi's `search_moves` turned out to be pseudo-legal (no self-check filtering, no pawn-drop-mate exclusion — confirmed by source inspection), so it cannot produce comparable legal-perft numbers and no option exists to enable full legality. [rshogi](https://github.com/SH11235/rshogi) (GPL-3.0, active, USI `go perft` built in) replaces it as the modern-Rust reference. Fairy-Stockfish (GPL-3.0, shogi variant with the pawn-drop-mate rule implemented, Stockfish-style `go perft`) is added as an independent-implementation cross-check; being a generalized variant engine, its speed is reference-only. Candidate survey at the time: WCSC/Denryu-sen open-source engines reduce to the YaneuraOu / Apery / dlshogi(=cshogi-core) movegen families already covered; Gikou (dormant since 2020, no perft, x86-oriented), GPS/OSL (dormant), Bonanza (non-OSS license), and nozaq/shogi-rs (no true perft; validate-on-make API) were considered and passed over.
 - **2026-07-23 — Zobrist keys from an inline fixed-seed splitmix64**, not a seedable RNG crate (as the old yasai did): no extra runtime dependency, keys stay byte-for-byte reproducible independent of any crate's version (`rand`'s `StdRng`/`SmallRng` explicitly do not guarantee algorithm stability across versions), and it converts trivially to `const fn` when tables are const-ified (M4). Embedding a tiny PRNG for Zobrist init is standard engine practice; splitmix64 itself is a public-domain (CC0) algorithm by Sebastiano Vigna.
+- **2026-07-24 — benchmark history is committed to the repo, keyed by append-only criterion ids.** criterion's own baselines (`--save-baseline`) live in `target/`, are machine-local and volatile, so they cannot serve as a durable "improvement history"; instead `scripts/bench_snapshot.py` summarizes each run into `benches/history/*.json` (mean/median/σ per id, plus git rev, rustc, criterion version, CPU, OS, fixture versions) and regenerates the headline table in BENCHMARKS.md. Bench ids are append-only (renames/reuse forbidden; new APIs and new fixture versions get new ids) so a metric's time series always measures the same thing. Baselines remain the tool for local A/B during development.
+- **2026-07-24 — internals are exposed to benches via a `bench-internals` feature and a `#[doc(hidden)]` wrapper module** (`src/internals.rs`), wrapping exactly the M4 swap-boundary functions (`lance/bishop/rook_attacks`, `attacks_of`) plus `attackers_to`. Wrapper functions because `pub use` of a `pub(crate)` item is rejected (E0365); a feature (rather than making them `pub`) because the public API must stay exactly the `Position`-level surface — the M4 backends swap behind these signatures and must not become de-facto public API. The `internals` bench target sets `required-features`, so plain `cargo bench` simply skips it.
+- **2026-07-24 — movegen/do-undo fixtures come from floodgate real games via our own Rust extractor** (`examples/gen_bench_positions.rs`), committed as versioned, frozen files (`benches/positions/sampled-v1.sfen`, `games-v1.usi`). Real games were chosen over fixed-seed random playouts for two reasons: playout positions skew unrealistic (scattered material, inflated hands), and — decisive — playout *reproduction* depends on `legal_moves()` ordering, so any M3/M4 ordering change would silently change the workload and corrupt the history; committed SFEN/USI text is stable forever, and versioning (v1 → v2 with new bench ids) keeps even a deliberate set change traceable. Licensing: game records are factual data (positions/moves are not copyrightable expression), the extraction pipeline is entirely our own permissive code on `shogi_core` serialization (no GPL tooling), and raw kifu files are never committed. The extractor validates every game move against `legal_moves()`, doubling as a real-game differential test; kifu I/O remains a library non-goal (the CSA parsing lives only in this dev example).
 
 ## 4. Benchmarking method
 
@@ -67,12 +70,30 @@ Rationale for decisions made during implementation, recorded so they can be revi
   - initial position
   - **"matsuri" midgame position** (指し手生成祭り, the standard movegen-benchmark position in the Japanese shogi-dev community; used by YaneuraOu's `bench` / `test genmoves`): `l6nl/5+P1gk/2np1S3/p1p4Pp/3P2Sp1/1PPb2P1P/P5GS1/R8/LN4bKL w GR5pnsg 1`
   - **maximum-legal-move position** (`R8/2K1S1SSk/4B4/9/9/9/9/9/1L1L1L3 b RBGSNLP3g3n17p 1`)
-  - check- and mate-adjacent positions
+  - check- and mate-adjacent positions — realized (M2) as the in-check subset of the sampled real-game fixture (`movegen/sampled-v1-check`)
 - **Fairness** — normalize every library to the same work before comparing:
   - **Full legal move generation** (account for pseudo-legal + validation vs fully-legal differences, callback vs `Vec`/`ArrayVec` API differences, and Python-binding boundary costs).
   - **Pawn-drop-mate (打ち歩詰め) exclusion**: legal movegen must not generate pawn drops that give immediate checkmate. Engines differ here and it is a known cause of perft mismatches (see the TalkChess thread in §6); shunsai excludes them, and comparisons must confirm each library does the same.
   - **Bulk counting**: perft harnesses must agree on leaf handling. haitaka's perft example bulk-counts at depth 1 (cozy-chess style) instead of playing out leaf moves; our cross-library perft comparisons standardize on **leaf bulk counting** (and note it in results).
   - **C++ engines' measurement method**: YaneuraOu is measured with its built-in `test genmoves` command (movegen throughput on the matsuri position) driven over USI; apery similarly via its own commands where available. cshogi ships no perft, so we write a small Python-side perft/movegen harness on its API (its Python-binding overhead is part of what the "practical stack" comparison measures — report it as such).
+
+### Micro-benchmark suite (M2)
+
+The in-repo criterion suite implementing the metrics above — bench targets,
+ids, fixtures, the id-stability contract, and the workflow for recording
+results — is documented in [BENCHMARKS.md](./BENCHMARKS.md). Key points:
+
+- Bench ids are **append-only** (never renamed/reused); history entries in
+  `benches/history/*.json` are keyed by them and committed, so improvements
+  can be traced over time. criterion's local baselines are only for ad-hoc
+  A/B during development.
+- `movegen` is additionally measured over a **versioned fixture of real-game
+  positions** (`benches/positions/sampled-v1.sfen`, floodgate games,
+  phase-stratified), and `do_undo` replays committed real-game move
+  sequences (`games-v1.usi`) — deterministic and independent of move
+  ordering, so history comparisons stay valid across M3/M4 changes.
+- Internal primitives (the M4 swap-boundary attack functions and
+  `attackers_to`) are benchmarked via the `bench-internals` feature.
 
 ## 5. Comparison targets
 
@@ -97,7 +118,7 @@ Correctness oracle (not a speed target): [`shogi_legality_lite`](https://github.
 
 - **M0 (done)**: name & concept fixed; design documents. Licensing policy decided.
 - **M1 (done)**: **simple, correct implementation** (Position + naive movegen) matching known perft values.
-- **M2**: benchmark harness (criterion + `../benchmarks` integration); record the naive implementation as baseline.
+- **M2 (done)**: benchmark harness (criterion + `../benchmarks` integration); record the naive implementation as baseline. In-repo suite documented in [BENCHMARKS.md](./BENCHMARKS.md); cross-engine baseline recorded 2026-07-23 in the local benchmarks repository (§5).
 - **M3**: refine the move-generation API into the callback form (keeping `legal_moves()` compatibility).
 - **M4**: evaluate optimization candidates (Qugiy / magic / SIMD / const tables / incremental AttackInfo / layout) and **adopt by benchmark comparison**.
 - **M5**: numerically confirm we **beat** haitaka / apery_rust.
