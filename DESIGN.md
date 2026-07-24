@@ -115,7 +115,7 @@ Correctness oracle (not a speed target): [`shogi_legality_lite`](https://github.
 ※ `R8/2K1S1SSk/4B4/9/9/9/9/9/1L1L1L3 b RBGSNLP3g3n17p 1`
 
 - Initial-position values through depth 5–6 are cross-confirmed by multiple independent engines ([shogi-l thread](https://groups.google.com/g/shogi-l/c/U7hmtThbk1k), [TalkChess "Shogi Perft numbers"](https://www.talkchess.com/forum3/viewtopic.php?t=71550)); the max-moves values come from [this Qiita article](https://qiita.com/ak11/items/8bd5f2bb0f5b014143c8) (also used in yasai's tests).
-- Matsuri values confirmed 2026-07-23 via the `../benchmarks/perft` harness: nine independent implementations agree (shunsai, haitaka, yasai, apery_rust, rshogi, YaneuraOu, apery, cshogi, Fairy-Stockfish), matching the expected values hardcoded in YaneuraOu's own test suite.
+- Matsuri values confirmed 2026-07-23 via the cross-engine perft harness in the local benchmarks repository (§5): nine independent implementations agree (shunsai, haitaka, yasai, apery_rust, rshogi, YaneuraOu, apery, cshogi, Fairy-Stockfish), matching the expected values hardcoded in YaneuraOu's own test suite.
 - Max-moves depth 3–4 established 2026-07-23 by 8-engine consensus (same harness; depth 3 is also asserted in yasai's upstream bench). Fairy-Stockfish is excluded there by convention: it *generates* pawn-drop-mate moves and enforces the rule as a game result, so its counts run high on drop-heavy trees (+6369 at depth 3) — a live example of the §4 fairness warning.
 - These counts assume **fully legal** generation, including **pawn-drop-mate (打ち歩詰め) exclusion** — a documented source of cross-engine perft disagreement (see the TalkChess thread).
 
@@ -124,7 +124,7 @@ Correctness oracle (not a speed target): [`shogi_legality_lite`](https://github.
 Fixed perft values alone only cover a handful of positions. In addition:
 
 - **Differential testing against `shogi_legality_lite`** (MIT, [rust-shogi-crates](https://github.com/rust-shogi-crates/shogi_legality_lite)): it is slow but straightforward, and it shares `shogi_core` types, so the full legal-move **sets** (not just counts) can be compared directly on arbitrary positions. Use it as a dev-dependency oracle: random playouts from the fixed position set, asserting set-equality of legal moves at every node.
-- **Cross-perft against cshogi / YaneuraOu** for positions with no published values: agreement between independent implementations establishes the reference number; record it here once confirmed. *(Done for the matsuri position, 2026-07-23 — see the known-values table above. Max-moves depth 3+ remains consensus-only in the `../benchmarks/perft` harness.)*
+- **Cross-perft against cshogi / YaneuraOu** for positions with no published values: agreement between independent implementations establishes the reference number; record it here once confirmed. *(Done for the matsuri position, 2026-07-23 — see the known-values table above. Max-moves depth 3–4 are consensus-only, recorded in the local benchmarks repository (§5).)*
 
 ## 7. Licensing policy (important)
 
