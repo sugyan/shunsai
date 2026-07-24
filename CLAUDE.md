@@ -14,12 +14,12 @@ This file defines project rules that every future implementation session (Claude
 The project license is **`MIT OR Apache-2.0`**. To keep it clean, obey the following when generating code.
 
 **May reference / reuse (MIT)**
-- [haitaka](https://github.com/tofutofu/haitaka), [cozy-chess](https://github.com/analog-hors/cozy-chess), [rustshogi](https://github.com/applyuser160/rustshogi), [shogi_core](https://github.com/rust-shogi-crates/shogi_core)
+- [haitaka](https://github.com/tofutofu/haitaka), [cozy-chess](https://github.com/analog-hors/cozy-chess), [shogi_core](https://github.com/rust-shogi-crates/shogi_core)
 - Public algorithm write-ups such as the Qugiy appeal document and magic-bitboard articles
 - When reusing from MIT sources, **retain the copyright notices**
 
 **Must not reference / copy (GPL-3.0)**
-- **apery / apery_rust / YaneuraOu / cshogi / the old yasai** (present under `../benchmarks/`, but GPL)
+- **apery / apery_rust / YaneuraOu / cshogi / rshogi / Fairy-Stockfish / the old yasai** (present under `../benchmarks/` — a **local-only, unpublished** sibling repo, not part of this repository — all GPL)
 - Understanding the technique and **writing it yourself** is fine, but **do not read-and-copy or port the code verbatim** (that inherits GPLv3).
 - ⚠️ The old yasai is sugyan's own work but is **GPL-3.0** (derived from apery_rust). Porting yasai's code is **also forbidden** — reimplement it to stay permissive.
 
@@ -33,10 +33,10 @@ See "7. Licensing policy" in [DESIGN.md](./DESIGN.md) for the rationale.
 
 - Initial position: `depth1=30, depth2=900, depth3=25470, depth4=719731, depth5=19861490, depth6=547581517`
 - Max-moves position `R8/2K1S1SSk/4B4/9/9/9/9/9/1L1L1L3 b RBGSNLP3g3n17p 1`: `depth1=593, depth2=105677`
-- Benchmark midgame position ("matsuri" / 指し手生成祭り): `l6nl/5+P1gk/2np1S3/p1p4Pp/3P2Sp1/1PPb2P1P/P5GS1/R8/LN4bKL w GR5pnsg 1`
+- Benchmark midgame position ("matsuri" / 指し手生成祭り) `l6nl/5+P1gk/2np1S3/p1p4Pp/3P2Sp1/1PPb2P1P/P5GS1/R8/LN4bKL w GR5pnsg 1`: `depth1=207, depth2=28684, depth3=4809015, depth4=516925165` (cross-confirmed 2026-07-23 across 9 independent implementations)
 - These values assume **fully legal** generation: pawn-drop-mate (打ち歩詰め) moves must **not** be generated.
 - Beyond fixed values, verify by **differential testing against `shogi_legality_lite`** (MIT, same `shogi_core` types — compare full legal-move sets on arbitrary positions, as a dev-dependency).
 
 ## Benchmarks
 
-Measure perft / movegen / do-undo with `criterion`. Comparison targets are in [`../benchmarks`](../benchmarks) (goal: **beat haitaka / apery_rust**).
+Measure perft / movegen / do-undo with `criterion`. Comparison targets are pinned submodules in `../benchmarks` — a **local-only, unpublished sibling repository** (no remote; not visible from this GitHub repo — see its README when working locally). Goal: **beat haitaka / apery_rust**.
