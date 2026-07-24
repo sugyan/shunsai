@@ -92,7 +92,14 @@ def criterion_version() -> str:
 def position_sets() -> list[str]:
     sets = []
     for path in sorted(POSITIONS_DIR.iterdir()):
-        first_line = path.read_text().splitlines()[0]
+        # Stray local entries (.DS_Store, directories, binary or empty
+        # files) must not block snapshot creation.
+        if not path.is_file() or path.name.startswith("."):
+            continue
+        try:
+            first_line = path.read_text().splitlines()[0]
+        except (UnicodeDecodeError, IndexError):
+            continue
         match = re.search(r"fixture: (\S+)", first_line)
         sets.append(match.group(1) if match else path.name)
     return sets
