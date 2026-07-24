@@ -54,7 +54,7 @@ impl Position {
 /// Uses the reverse-lookup trick: a piece of color `c` on `p` attacks
 /// `square` if and only if `p` is attacked from `square` by the same piece
 /// kind of the opposite color.
-fn attackers_to(
+pub(crate) fn attackers_to(
     position: &Position,
     square: Square,
     occupied: Bitboard,

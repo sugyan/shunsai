@@ -10,12 +10,40 @@ readme = "README.md"
 keywords = ["shogi", "move-generation", "bitboard", "game", "usi"]
 categories = ["game-development", "algorithms"]
 
+[features]
+# Exposes crate internals to `benches/` only (see `src/internals.rs`).
+# Not public API: no stability guarantees, never enable as a dependency.
+bench-internals = []
+
 [dependencies]
 shogi_core = "0.1.5"
 
 [dev-dependencies]
+criterion = "0.8"
 shogi_legality_lite = "0.1"
 shogi_usi_parser = "0.1"
+
+# Keep libtest's bench harness off the lib so criterion CLI flags
+# (e.g. `cargo bench -- --save-baseline x`) are not passed to libtest.
+[lib]
+bench = false
+
+[[bench]]
+name = "perft"
+harness = false
+
+[[bench]]
+name = "movegen"
+harness = false
+
+[[bench]]
+name = "do_undo"
+harness = false
+
+[[bench]]
+name = "internals"
+harness = false
+required-features = ["bench-internals"]
 
 # Benchmark conditions from DESIGN.md §4 (applies to examples/tests built here)
 [profile.release]
