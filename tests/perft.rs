@@ -69,11 +69,11 @@ fn max_moves_position_deep() {
 fn matsuri_position() {
     assert_eq!(perft_sfen(MATSURI_SFEN, 1), 207);
     assert_eq!(perft_sfen(MATSURI_SFEN, 2), 28684);
-    assert_eq!(perft_sfen(MATSURI_SFEN, 3), 4809015);
 }
 
 #[test]
 #[ignore = "slow; run with --release -- --ignored"]
 fn matsuri_position_deep() {
+    assert_eq!(perft_sfen(MATSURI_SFEN, 3), 4809015);
     assert_eq!(perft_sfen(MATSURI_SFEN, 4), 516925165);
 }

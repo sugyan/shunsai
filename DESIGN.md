@@ -148,7 +148,7 @@ Copyright protects **expression (the actual code)**, not ideas, algorithms, or t
 
 To keep the permissive license clean, both human and AI contributors must:
 
-- **May reference**: haitaka / cozy-chess / rustshogi / shogi_core (MIT), plus **public algorithm write-ups** (the Qugiy appeal document, magic-bitboard articles, etc.).
+- **May reference**: haitaka / cozy-chess / shogi_core (MIT), plus **public algorithm write-ups** (the Qugiy appeal document, magic-bitboard articles, etc.).
 - **Must not copy**: apery / apery_rust / YaneuraOu / cshogi / rshogi / Fairy-Stockfish / the old yasai (GPL-3.0). Understanding the technique is fine; copying the code is not.
 - **Generate tables / magic numbers with our own generator** (never paste them from elsewhere).
 - When reusing from MIT sources, **retain the copyright notices** (approximate / partial reuse is fine).

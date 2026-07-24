@@ -14,7 +14,7 @@ This file defines project rules that every future implementation session (Claude
 The project license is **`MIT OR Apache-2.0`**. To keep it clean, obey the following when generating code.
 
 **May reference / reuse (MIT)**
-- [haitaka](https://github.com/tofutofu/haitaka), [cozy-chess](https://github.com/analog-hors/cozy-chess), [rustshogi](https://github.com/applyuser160/rustshogi), [shogi_core](https://github.com/rust-shogi-crates/shogi_core)
+- [haitaka](https://github.com/tofutofu/haitaka), [cozy-chess](https://github.com/analog-hors/cozy-chess), [shogi_core](https://github.com/rust-shogi-crates/shogi_core)
 - Public algorithm write-ups such as the Qugiy appeal document and magic-bitboard articles
 - When reusing from MIT sources, **retain the copyright notices**
 
