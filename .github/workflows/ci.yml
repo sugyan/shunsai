@@ -18,8 +18,10 @@ jobs:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --check
-      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo clippy --all-targets --all-features -- -D warnings
       - run: cargo test
+      # Compile the criterion benches; never run/measure them in CI.
+      - run: cargo bench --no-run --all-features
 
   # Deep perft (initial position depth 5/6) is #[ignore]d in the normal run.
   perft-deep:
