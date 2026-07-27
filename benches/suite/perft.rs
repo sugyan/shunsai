@@ -7,7 +7,7 @@ use shunsai::Position;
 
 use crate::common;
 
-/// Identical to `tests/perft.rs` (leaf bulk counting).
+/// The M1 allocating `Vec` API (leaf bulk counting).
 fn perft(position: &mut Position, depth: u32) -> u64 {
     if depth == 0 {
         return 1;
@@ -20,6 +20,34 @@ fn perft(position: &mut Position, depth: u32) -> u64 {
     for mv in moves {
         position.do_move(mv);
         nodes += perft(position, depth - 1);
+        position.undo_move(mv);
+    }
+    nodes
+}
+
+/// The M3 callback API, as `examples/perft.rs` uses it: leaf parents count
+/// straight off the destination bitboards and never build a `Move`.
+fn perft_cb(position: &mut Position, depth: u32) -> u64 {
+    if depth == 0 {
+        return 1;
+    }
+    if depth == 1 {
+        let mut nodes = 0;
+        position.generate_moves(|set| {
+            nodes += set.len() as u64;
+            false
+        });
+        return nodes;
+    }
+    let mut moves = Vec::with_capacity(128);
+    position.generate_moves(|set| {
+        moves.extend(set);
+        false
+    });
+    let mut nodes = 0;
+    for mv in moves {
+        position.do_move(mv);
+        nodes += perft_cb(position, depth - 1);
         position.undo_move(mv);
     }
     nodes
@@ -38,12 +66,19 @@ fn bench_perft(c: &mut Criterion) {
         ("maxmoves", common::MAX_MOVES_SFEN, 2, 105_677),
     ] {
         let mut position = common::position(sfen);
-        // Guard: the measured work is exactly the claimed node count.
+        // Guard: the measured work is exactly the claimed node count, and
+        // both APIs walk the same tree.
         assert_eq!(perft(&mut position, depth), nodes);
+        assert_eq!(perft_cb(&mut position, depth), nodes);
         group.throughput(Throughput::Elements(nodes));
         group.bench_with_input(BenchmarkId::new(name, depth), &depth, |b, &depth| {
             b.iter(|| perft(&mut position, depth))
         });
+        group.bench_with_input(
+            BenchmarkId::new(format!("{name}-cb"), depth),
+            &depth,
+            |b, &depth| b.iter(|| perft_cb(&mut position, depth)),
+        );
     }
     group.finish();
 }

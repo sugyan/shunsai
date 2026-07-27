@@ -16,10 +16,22 @@ fn perft(position: &mut Position, depth: u32) -> u64 {
     if depth == 0 {
         return 1;
     }
-    let moves = position.legal_moves();
     if depth == 1 {
-        return moves.len() as u64;
+        // Bulk counting: the leaf parents never build a single `Move`.
+        let mut nodes = 0;
+        position.generate_moves(|set| {
+            nodes += set.len() as u64;
+            false
+        });
+        return nodes;
     }
+    // Deeper nodes still need the moves themselves, and `do_move` cannot
+    // run while the callback holds the position borrowed.
+    let mut moves = Vec::with_capacity(128);
+    position.generate_moves(|set| {
+        moves.extend(set);
+        false
+    });
     let mut nodes = 0;
     for mv in moves {
         position.do_move(mv);

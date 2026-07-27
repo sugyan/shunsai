@@ -143,6 +143,53 @@ pub(crate) fn between(a: Square, b: Square) -> Bitboard {
     BETWEEN[a.array_index()][b.array_index()]
 }
 
+/// Squares at relative rank `1..=max_relative_rank` for `color`, i.e. the
+/// `max_relative_rank` ranks nearest the opponent.
+const fn relative_rank_mask(color: usize, max_relative_rank: i8) -> Bitboard {
+    let mut bits = 0u128;
+    let mut index = 0;
+    while index < 81 {
+        let rank = rank_of(index);
+        // Black advances toward rank 1, White toward rank 9.
+        let relative = if color == 0 { rank } else { 10 - rank };
+        if relative <= max_relative_rank {
+            bits |= 1 << index;
+        }
+        index += 1;
+    }
+    Bitboard::from_bits(bits)
+}
+
+const fn relative_rank_masks(max_relative_rank: i8) -> [Bitboard; 2] {
+    [
+        relative_rank_mask(0, max_relative_rank),
+        relative_rank_mask(1, max_relative_rank),
+    ]
+}
+
+/// The three ranks where moving in or out enables promotion.
+static PROMOTION_ZONE: [Bitboard; 2] = relative_rank_masks(3);
+/// The last rank: a pawn or lance landing here must promote.
+static LAST_RANK: [Bitboard; 2] = relative_rank_masks(1);
+/// The last two ranks: a knight landing here must promote.
+static LAST_TWO_RANKS: [Bitboard; 2] = relative_rank_masks(2);
+
+#[inline(always)]
+pub(crate) fn promotion_zone(color: Color) -> Bitboard {
+    PROMOTION_ZONE[color.array_index()]
+}
+
+/// The ranks on which `piece_kind` would have no move left, so promotion is
+/// compulsory. Empty for pieces that are never forced.
+#[inline(always)]
+pub(crate) fn forced_promotion_zone(color: Color, piece_kind: PieceKind) -> Bitboard {
+    match piece_kind {
+        PieceKind::Pawn | PieceKind::Lance => LAST_RANK[color.array_index()],
+        PieceKind::Knight => LAST_TWO_RANKS[color.array_index()],
+        _ => Bitboard::EMPTY,
+    }
+}
+
 // Slider attacks live in `crate::sliders`, which is the swap boundary for
 // the M4 backends; these are the crate-wide entry points.
 pub(crate) use crate::sliders::active::{bishop_attacks, rook_attacks};
