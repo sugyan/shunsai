@@ -158,7 +158,12 @@ impl Position {
     pub fn legal_moves(&self) -> Vec<Move> {
         let mut moves = Vec::with_capacity(128);
         self.generate_moves(|set| {
-            moves.extend(set);
+            // A plain push loop rather than `extend`: `MoveSetIter` is not
+            // `TrustedLen`, so `extend` re-checks the length bound per
+            // element and measurably loses on drop-heavy positions.
+            for mv in set {
+                moves.push(mv);
+            }
             false
         });
         moves
@@ -386,43 +391,43 @@ fn generate_drops(
     if targets.is_empty() {
         return;
     }
+    let has_pawn = hand.count(PieceKind::Pawn).unwrap_or(0) > 0;
     // Files that already contain one of our unpromoted pawns (nifu).
-    let our_pawns = position.piece_kind_bb(PieceKind::Pawn) & position.player_bb(us);
-    let mut pawn_files = Bitboard::EMPTY;
-    for file in 1..=9 {
-        let mask = Bitboard::file(file);
-        if !(our_pawns & mask).is_empty() {
-            pawn_files |= mask;
-        }
-    }
+    let pawn_files = if has_pawn {
+        let our_pawns = position.piece_kind_bb(PieceKind::Pawn) & position.player_bb(us);
+        (1..=9).fold(Bitboard::EMPTY, |files, file| {
+            let mask = Bitboard::file(file);
+            if (our_pawns & mask).is_empty() {
+                files
+            } else {
+                files | mask
+            }
+        })
+    } else {
+        Bitboard::EMPTY
+    };
     let enemy_king = position.king_square(us.flip());
     for piece_kind in Hand::all_hand_pieces() {
         if hand.count(piece_kind).unwrap_or(0) == 0 {
             continue;
         }
         let piece = Piece::new(piece_kind, us);
-        let mut targets = targets;
+        // A piece may not be dropped where it could never move again —
+        // exactly the squares that would force promotion for a board move.
+        let mut drops = targets & !tables::forced_promotion_zone(us, piece_kind);
         if piece_kind == PieceKind::Pawn {
-            targets &= !pawn_files;
-        }
-        // Ranks where the piece would never be able to move again.
-        let min_rank = match piece_kind {
-            PieceKind::Pawn | PieceKind::Lance => 2,
-            PieceKind::Knight => 3,
-            _ => 1,
-        };
-        let mut drops = Bitboard::EMPTY;
-        for to in targets {
-            if to.relative_rank(us) < min_rank {
-                continue;
+            drops &= !pawn_files;
+            // Only a pawn that gives check can be a pawn-drop mate, and by
+            // the reverse-lookup trick exactly one square does that, so the
+            // expensive simulation is reached at most once per position.
+            if let Some(enemy_king) = enemy_king {
+                let checking = drops & tables::pawn_attacks(us.flip(), enemy_king);
+                if let Some(to) = checking.into_iter().next()
+                    && is_pawn_drop_mate(position, piece, to)
+                {
+                    drops ^= Bitboard::single(to);
+                }
             }
-            if piece_kind == PieceKind::Pawn
-                && enemy_king.is_some_and(|king| tables::pawn_attacks(us, to).contains(king))
-                && is_pawn_drop_mate(position, piece, to)
-            {
-                continue;
-            }
-            drops |= Bitboard::single(to);
         }
         if !drops.is_empty() && listener(MoveSet::Drop { piece, to: drops }) {
             return;
