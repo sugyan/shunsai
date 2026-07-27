@@ -1,7 +1,7 @@
 # shunsai — Design Document
 
 Design, implementation approach, benchmarking method, comparison targets, milestones, and licensing policy for `shunsai`.
-Current status: **M3 complete; M4 in progress** — callback move generation and magic slider attacks landed, both adopted by measurement against the committed benchmark history.
+Current status: **M3 complete; M4 largely done; M5 partly met** — magic slider attacks, callback move generation and pin-based legality landed, each adopted by measurement. Perft is 6–12× the M2 baseline; apery_rust and the old yasai are beaten on every fixed position, haitaka still leads by 1.1–1.5×.
 
 ## 1. Background & goal
 
@@ -139,7 +139,18 @@ Correctness oracle (not a speed target): [`shogi_legality_lite`](https://github.
 - **M2 (done)**: benchmark harness (criterion + `../benchmarks` integration); record the naive implementation as baseline. In-repo suite documented in [BENCHMARKS.md](./BENCHMARKS.md); cross-engine baseline recorded 2026-07-23 in the local benchmarks repository (§5).
 - **M3 (done)**: move-generation API refined into the callback form — `Position::generate_moves(|MoveSet| -> bool)`, with `legal_moves()` kept as the allocating wrapper. Measured under the append-only `-cb` bench ids beside the `Vec` ones.
 - **M4 (in progress)**: evaluate optimization candidates and **adopt by benchmark comparison**. Slider attacks done — magic adopted over Qugiy-style arithmetic and the naive walk (see the decision log); const tables done (measured neutral, kept as a simplification). Pin-based legality done. Per-piece-kind bulk generation and a cached gold union were both measured and rejected (see the decision log). Remaining candidates: incremental attack information, and profiling-led work rather than further guesses.
-- **M5**: numerically confirm we **beat** haitaka / apery_rust.
+- **M5 (partly met)**: numerically confirm we **beat** haitaka / apery_rust. Re-measured 2026-07-27 on one machine and one day, all engines, via the `../benchmarks/perft` harness (seconds; lower is better):
+
+  | engine | startpos d5 | matsuri d3 | maxmoves d3 |
+  |---|---|---|---|
+  | **shunsai** | **0.091** | **0.0028** | **0.028** |
+  | haitaka | 0.078 | 0.0026 | 0.019 |
+  | apery_rust | 0.102 | 0.0115 | 0.114 |
+  | yaneuraou (C++) | 0.092 | 0.010 | 0.084 |
+  | apery (C++) | 0.100 | 0.010 | 0.091 |
+  | yasai 0.5.0 (self-baseline) | 0.133 | 0.0125 | 0.120 |
+
+  **apery_rust is beaten on all three** (1.1× / 4.1× / 4.1×), as are yasai (1.5× / 4.5× / 4.3×), apery and — on the two midgame positions — YaneuraOu. **haitaka is not yet beaten**: it stays ahead by 1.17× on startpos, ~1.1× on matsuri and 1.46× on maxmoves. Closing that last gap is what remains of M5.
 - **M6**: switch `tsumeshogi-solver` to depend on `shunsai`; validate the migration.
 - **Later**: publish v0.1.0 on crates.io (`keywords = ["shogi","move-generation","bitboard","game","usi"]`, `categories = ["game-development","algorithms"]`).
 
