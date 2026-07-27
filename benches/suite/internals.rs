@@ -60,7 +60,40 @@ fn bench_internals(c: &mut Criterion) {
         })
     });
 
+    // The M4 bake-off: each backend measured on the same sweep, in one run.
+    // `bishop-attacks` / `rook-attacks` above track whichever backend is
+    // live, so these per-backend ids are what the adoption decision reads.
+    macro_rules! bench_backend {
+        ($name:literal, $module:ident) => {
+            group.bench_function(concat!("bishop-attacks-", $name), |b| {
+                b.iter(|| {
+                    let mut acc = Bitboard::EMPTY;
+                    for &occupied in &occupancies {
+                        for &square in &squares {
+                            acc |= internals::backends::$module::bishop_attacks(square, occupied);
+                        }
+                    }
+                    acc
+                })
+            });
+            group.bench_function(concat!("rook-attacks-", $name), |b| {
+                b.iter(|| {
+                    let mut acc = Bitboard::EMPTY;
+                    for &occupied in &occupancies {
+                        for &square in &squares {
+                            acc |= internals::backends::$module::rook_attacks(square, occupied);
+                        }
+                    }
+                    acc
+                })
+            });
+        };
+    }
     group.throughput(Throughput::Elements(calls));
+    bench_backend!("naive", naive);
+    bench_backend!("qugiy", qugiy);
+    bench_backend!("magic", magic);
+
     group.bench_function("attackers-to", |b| {
         b.iter(|| {
             let mut acc = Bitboard::EMPTY;

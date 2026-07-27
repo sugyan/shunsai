@@ -14,6 +14,13 @@ categories = ["game-development", "algorithms"]
 # Exposes crate internals to `benches/` only (see `src/internals.rs`).
 # Not public API: no stability guarantees, never enable as a dependency.
 bench-internals = []
+# M4 slider-attack backend selection (see src/sliders/). The default is
+# `magic`, which won the bake-off; these flags override it. Every backend is
+# always compiled so the tests can hold it against the naive oracle, so a
+# flag only changes which one the crate actually calls. Both overrides exist
+# for A/B measurement and debugging, not for real use.
+slider-naive = []
+slider-qugiy = []
 
 [dependencies]
 shogi_core = "0.1.5"

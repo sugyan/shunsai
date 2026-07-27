@@ -30,6 +30,38 @@ pub fn attacks_of(piece: Piece, square: Square, occupied: Bitboard) -> Bitboard 
     crate::tables::attacks_of(piece, square, occupied)
 }
 
+/// The individual M4 slider backends, for the A/B comparison that decides
+/// which one `lance_attacks` / `bishop_attacks` / `rook_attacks` above
+/// actually call. Every backend is measurable in a single run, so the
+/// bake-off does not depend on rebuilding under different feature flags.
+pub mod backends {
+    use shogi_core::Square;
+
+    use crate::bitboard::Bitboard;
+
+    macro_rules! expose {
+        ($module:ident) => {
+            pub mod $module {
+                use super::{Bitboard, Square};
+
+                #[inline(always)]
+                pub fn bishop_attacks(square: Square, occupied: Bitboard) -> Bitboard {
+                    crate::sliders::$module::bishop_attacks(square, occupied)
+                }
+
+                #[inline(always)]
+                pub fn rook_attacks(square: Square, occupied: Bitboard) -> Bitboard {
+                    crate::sliders::$module::rook_attacks(square, occupied)
+                }
+            }
+        };
+    }
+
+    expose!(naive);
+    expose!(qugiy);
+    expose!(magic);
+}
+
 /// The checker/attacker computation at the heart of legality testing.
 #[inline(always)]
 pub fn attackers_to(

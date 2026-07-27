@@ -11,28 +11,7 @@
 
 use shogi_core::{Color, Piece, PieceKind, Square};
 
-use crate::bitboard::Bitboard;
-
-/// The file (1..=9) of the square with array index `index`.
-///
-/// The layout is file-major: `array_index = (file - 1) * 9 + (rank - 1)`.
-const fn file_of(index: usize) -> i8 {
-    (index / 9) as i8 + 1
-}
-
-/// The rank (1..=9) of the square with array index `index`.
-const fn rank_of(index: usize) -> i8 {
-    (index % 9) as i8 + 1
-}
-
-/// The array index of `(file, rank)`; both must be on the board.
-const fn index_of(file: i8, rank: i8) -> usize {
-    ((file - 1) * 9 + (rank - 1)) as usize
-}
-
-const fn on_board(file: i8, rank: i8) -> bool {
-    1 <= file && file <= 9 && 1 <= rank && rank <= 9
-}
+use crate::bitboard::{Bitboard, file_of, index_of, on_board, rank_of};
 
 /// `(file_delta, rank_delta)` steps, from Black's point of view
 /// (Black moves toward rank 1, i.e. negative rank delta).
@@ -164,35 +143,10 @@ pub(crate) fn between(a: Square, b: Square) -> Bitboard {
     BETWEEN[a.array_index()][b.array_index()]
 }
 
-/// Walks each ray one square at a time, stopping at (and including) the first
-/// occupied square.
-fn ray_attacks(square: Square, occupied: Bitboard, steps: &[(i8, i8)]) -> Bitboard {
-    let mut attacks = Bitboard::EMPTY;
-    for &(file_delta, rank_delta) in steps {
-        let mut current = square;
-        while let Some(next) = current.shift(file_delta, rank_delta) {
-            attacks |= Bitboard::single(next);
-            if occupied.contains(next) {
-                break;
-            }
-            current = next;
-        }
-    }
-    attacks
-}
-
-pub(crate) fn lance_attacks(color: Color, square: Square, occupied: Bitboard) -> Bitboard {
-    let rank_delta = if color == Color::Black { -1 } else { 1 };
-    ray_attacks(square, occupied, &[(0, rank_delta)])
-}
-
-pub(crate) fn bishop_attacks(square: Square, occupied: Bitboard) -> Bitboard {
-    ray_attacks(square, occupied, &DIAGONAL_STEPS)
-}
-
-pub(crate) fn rook_attacks(square: Square, occupied: Bitboard) -> Bitboard {
-    ray_attacks(square, occupied, &ORTHOGONAL_STEPS)
-}
+// Slider attacks live in `crate::sliders`, which is the swap boundary for
+// the M4 backends; these are the crate-wide entry points.
+pub(crate) use crate::sliders::active::{bishop_attacks, rook_attacks};
+pub(crate) use crate::sliders::lance_attacks;
 
 /// The squares attacked by `piece` on `square`, given `occupied` (relevant to
 /// sliders only).

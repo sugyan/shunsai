@@ -6,6 +6,7 @@ mod bitboard;
 pub mod internals;
 mod movegen;
 mod position;
+mod sliders;
 mod tables;
 mod zobrist;
 
