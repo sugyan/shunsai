@@ -50,6 +50,17 @@ rustc, and criterion versions. The full suite takes roughly 3–5 minutes.
 | `internals/rook-attacks` | `rook_attacks(sq, occ)`, same sweep | Elements = calls |
 | `internals/lance-attacks` | `lance_attacks(color, sq, occ)`, both colors | Elements = calls |
 | `internals/attackers-to` | the reverse-lookup attacker test behind legality checking | Elements = calls |
+| `internals/{bishop,rook}-attacks-{naive,qugiy,magic}` | the same sweep against each M4 slider backend individually | Elements = calls |
+
+`internals/bishop-attacks` and `internals/rook-attacks` track whichever
+backend is *live*, so they are the improvement time series; the
+`-naive` / `-qugiy` / `-magic` ids measure all three in a single run and are
+what a backend-adoption decision reads. Selecting a backend for the
+`perft/*` and `movegen/*` ids needs a rebuild:
+
+```bash
+cargo bench --features bench-internals,slider-qugiy
+```
 
 The `movegen/*` ids measure the M1 allocating `Vec` API; the planned M3
 callback API will be added under new `-cb` ids. Perft bench setup asserts
@@ -127,5 +138,6 @@ hand.
 | date | rev | perft startpos-d4 Mnps | perft matsuri-d3 Mnps | movegen matsuri µs | movegen sampled-v1 µs/pos | do_undo ns/pair | note |
 |---|---|---|---|---|---|---|---|
 | 2026-07-24 | 6858e24 | 56.1 | 207.1 | 0.79 | 0.89 | 10.9 | M2 naive baseline (M1 implementation) |
+| 2026-07-27 | 8de28d8 | 97.7 | 326.9 | 0.52 | 0.48 | 11.4 | magic slider backend adopted (M4 bake-off vs qugiy/naive) |
 | 2026-07-27 | e101841 | 56.3 | 213.1 | 0.79 | 0.88 | 10.9 | const-evaluated attack tables (LazyLock removed) - neutral, all deltas within noise |
 <!-- BENCH_HISTORY_END -->
