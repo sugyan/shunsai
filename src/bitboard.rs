@@ -25,6 +25,14 @@ impl Bitboard {
         Self(1 << square.array_index())
     }
 
+    /// A set from raw bits. Bits 81.. must be clear; the tables built with
+    /// this are const-evaluated, so a violation is a compile error.
+    #[inline(always)]
+    pub(crate) const fn from_bits(bits: u128) -> Self {
+        debug_assert!(bits >> 81 == 0);
+        Self(bits)
+    }
+
     /// Whether `square` is in the set.
     #[inline(always)]
     pub const fn contains(self, square: Square) -> bool {
