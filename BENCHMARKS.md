@@ -147,4 +147,5 @@ hand.
 | 2026-07-27 | e101841 | 56.3 | 213.1 | 0.79 | 0.88 | 10.9 | const-evaluated attack tables (LazyLock removed) - neutral, all deltas within noise |
 | 2026-07-27 | 8de28d8 | 97.7 | 326.9 | 0.52 | 0.48 | 11.4 | magic slider backend adopted (M4 bake-off vs qugiy/naive) |
 | 2026-07-27 | d6ac964 | 95.8 | 408.4 | 0.39 | 0.42 | 10.9 | M3 callback API (-cb ids) + bitboard drop filtering |
+| 2026-07-27 | 76e5327 | 157.2 | 540.4 | 0.30 | 0.24 | 11.0 | pin-based legality: checkers + pinned computed once per node |
 <!-- BENCH_HISTORY_END -->
