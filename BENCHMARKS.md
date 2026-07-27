@@ -138,6 +138,6 @@ hand.
 | date | rev | perft startpos-d4 Mnps | perft matsuri-d3 Mnps | movegen matsuri µs | movegen sampled-v1 µs/pos | do_undo ns/pair | note |
 |---|---|---|---|---|---|---|---|
 | 2026-07-24 | 6858e24 | 56.1 | 207.1 | 0.79 | 0.89 | 10.9 | M2 naive baseline (M1 implementation) |
-| 2026-07-27 | 8de28d8 | 97.7 | 326.9 | 0.52 | 0.48 | 11.4 | magic slider backend adopted (M4 bake-off vs qugiy/naive) |
 | 2026-07-27 | e101841 | 56.3 | 213.1 | 0.79 | 0.88 | 10.9 | const-evaluated attack tables (LazyLock removed) - neutral, all deltas within noise |
+| 2026-07-27 | 8de28d8 | 97.7 | 326.9 | 0.52 | 0.48 | 11.4 | magic slider backend adopted (M4 bake-off vs qugiy/naive) |
 <!-- BENCH_HISTORY_END -->

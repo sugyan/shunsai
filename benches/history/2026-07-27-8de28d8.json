@@ -5,7 +5,8 @@
       "rev": "8de28d812c882c4dda509d3fde5adc242e8808af",
       "short_rev": "8de28d8",
       "branch": "claude/m4-const-tables",
-      "dirty": false
+      "dirty": false,
+      "committed": "2026-07-27T12:32:55+09:00"
     },
     "rustc": "rustc 1.94.1 (e408947bf 2026-03-25)",
     "criterion": "0.8.2",
