@@ -8,14 +8,25 @@ use shunsai::Position;
 const MAX_MOVES_SFEN: &str = "R8/2K1S1SSk/4B4/9/9/9/9/9/1L1L1L3 b RBGSNLP3g3n17p 1";
 const MATSURI_SFEN: &str = "l6nl/5+P1gk/2np1S3/p1p4Pp/3P2Sp1/1PPb2P1P/P5GS1/R8/LN4bKL w GR5pnsg 1";
 
+/// Uses the callback API, so the known perft values validate the hot path
+/// directly; `tests/differential.rs` covers the `legal_moves()` wrapper.
 fn perft(position: &mut Position, depth: u32) -> u64 {
     if depth == 0 {
         return 1;
     }
-    let moves = position.legal_moves();
     if depth == 1 {
-        return moves.len() as u64;
+        let mut nodes = 0;
+        position.generate_moves(|set| {
+            nodes += set.len() as u64;
+            false
+        });
+        return nodes;
     }
+    let mut moves = Vec::with_capacity(128);
+    position.generate_moves(|set| {
+        moves.extend(set);
+        false
+    });
     let mut nodes = 0;
     for mv in moves {
         position.do_move(mv);
@@ -23,6 +34,36 @@ fn perft(position: &mut Position, depth: u32) -> u64 {
         position.undo_move(mv);
     }
     nodes
+}
+
+/// Both APIs must walk the same tree.
+#[test]
+fn callback_and_vec_apis_agree() {
+    fn perft_vec(position: &mut Position, depth: u32) -> u64 {
+        if depth == 0 {
+            return 1;
+        }
+        let moves = position.legal_moves();
+        if depth == 1 {
+            return moves.len() as u64;
+        }
+        let mut nodes = 0;
+        for mv in moves {
+            position.do_move(mv);
+            nodes += perft_vec(position, depth - 1);
+            position.undo_move(mv);
+        }
+        nodes
+    }
+    for (sfen, depth) in [("startpos", 4), (MATSURI_SFEN, 2), (MAX_MOVES_SFEN, 2)] {
+        let mut a = if sfen == "startpos" {
+            Position::startpos()
+        } else {
+            Position::new(PartialPosition::from_usi(&format!("sfen {sfen}")).unwrap())
+        };
+        let mut b = a.clone();
+        assert_eq!(perft(&mut a, depth), perft_vec(&mut b, depth), "{sfen}");
+    }
 }
 
 fn perft_sfen(sfen: &str, depth: u32) -> u64 {

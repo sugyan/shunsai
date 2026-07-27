@@ -11,5 +11,6 @@ mod tables;
 mod zobrist;
 
 pub use bitboard::Bitboard;
+pub use movegen::{MoveSet, MoveSetIter};
 pub use position::Position;
 pub use shogi_core;
