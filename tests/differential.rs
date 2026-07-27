@@ -79,6 +79,31 @@ fn differential_startpos() {
     playout(&PartialPosition::startpos(), 16, 80, 0x0053_4855_4e53_4101);
 }
 
+/// The real-game fixture as differential seeds. Broader than the two
+/// hand-picked positions above — 40 middlegame/endgame positions, several of
+/// them in check — which is where pins, discovered checks and interposition
+/// actually occur.
+#[test]
+fn differential_sampled_positions() {
+    let path = format!(
+        "{}/benches/positions/sampled-v1.sfen",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let text = std::fs::read_to_string(&path).expect("sampled-v1 fixture must be readable");
+    let mut seeds = 0;
+    for (index, line) in text.lines().enumerate() {
+        let sfen = line.split('\t').next().unwrap_or(line).trim();
+        if sfen.is_empty() || sfen.starts_with('#') {
+            continue;
+        }
+        let partial = PartialPosition::from_usi(&format!("sfen {sfen}"))
+            .unwrap_or_else(|_| panic!("fixture SFEN must parse: {sfen}"));
+        playout(&partial, 2, 24, 0x0053_4855_4e53_4200 + index as u64);
+        seeds += 1;
+    }
+    assert_eq!(seeds, 40, "sampled-v1 is frozen at 40 positions");
+}
+
 #[test]
 fn differential_seed_positions() {
     for (index, sfen) in SEED_SFENS.iter().enumerate() {

@@ -4,11 +4,20 @@
 //! [`MoveSet`] per origin — destinations as bitboards — and can be stopped
 //! early. [`Position::legal_moves`] is the allocating wrapper over it.
 //!
-//! Legality strategy (still M1): generate pseudo-legal moves, then filter
-//! with an attack test on the adjusted occupancy. King safety, pins and
-//! discovered checks are all handled by the single [`attackers_to`] test;
-//! the test is skipped only when it provably cannot fail (not in check, not
-//! a king move, and the moving piece is not on a slider line to the king).
+//! Legality is decided per position rather than per move. Once per node the
+//! generator finds the [`checkers`](attackers_to) and the [`pinned_pieces`],
+//! and those two bitboards make every non-king move legal by construction:
+//!
+//! - a piece that is not pinned cannot expose its own king by moving, since
+//!   a pin is precisely the situation where it could;
+//! - a pinned piece is masked to the line it is pinned on, which still lets
+//!   it capture the pinner;
+//! - under a single check, every non-king move is masked to capturing the
+//!   checker or interposing, and a double check leaves only king moves.
+//!
+//! Only the king itself still needs a per-destination attack test, because
+//! it is what the test is about.
+//!
 //! Pawn-drop-mate (打ち歩詰め) is excluded by simulating the drop and asking
 //! whether the opponent has any reply at all.
 
@@ -337,31 +346,86 @@ fn generate_normal(
             return false;
         }
     };
-    let in_check = !checkers.is_empty();
-    // Only pieces standing on a slider line from the king can expose it by
-    // moving away; everything else can skip the attack test when not in
-    // check.
-    let pin_candidates =
-        (tables::rook_attacks(king, occupied) | tables::bishop_attacks(king, occupied)) & our;
-    for from in our {
-        let piece = position.piece_at(from).unwrap();
-        let is_king = from == king;
-        let needs_test = in_check || is_king || pin_candidates.contains(from);
-        let mut attacks = tables::attacks_of(piece, from, occupied) & targets;
-        if needs_test {
-            let mut safe = Bitboard::EMPTY;
-            for to in attacks {
-                if king_safe_after(position, us, king, from, to, occupied) {
-                    safe |= Bitboard::single(to);
-                }
+    // A double check can only be answered by moving the king.
+    if checkers.count() < 2 {
+        // Under a single check every other piece must capture the checker
+        // or interpose; otherwise anything goes.
+        let check_mask = match checkers.into_iter().next() {
+            Some(checker) => tables::between(king, checker) | Bitboard::single(checker),
+            None => Bitboard::ALL,
+        };
+        let pinned = pinned_pieces(position, us, king, occupied);
+        for from in our & !Bitboard::single(king) {
+            let piece = position.piece_at(from).unwrap();
+            let mut attacks = tables::attacks_of(piece, from, occupied) & targets & check_mask;
+            // A pinned piece may only travel along the line it is pinned
+            // on, which includes capturing the pinner.
+            if pinned.contains(from) {
+                attacks &= tables::line(king, from);
             }
-            attacks = safe;
-        }
-        if emit_normal(us, piece, from, attacks, listener) {
-            return true;
+            if emit_normal(us, piece, from, attacks, listener) {
+                return true;
+            }
         }
     }
-    false
+    generate_king_moves(position, us, king, occupied, targets, listener)
+}
+
+/// King moves are the only ones that still need a per-destination attack
+/// test: the king itself is what the test is about, and it must not walk
+/// along a checking ray, which is why it is lifted out of `occupied`.
+fn generate_king_moves(
+    position: &Position,
+    us: Color,
+    king: Square,
+    occupied: Bitboard,
+    targets: Bitboard,
+    listener: &mut impl FnMut(MoveSet) -> bool,
+) -> bool {
+    let piece = position.piece_at(king).expect("king square holds a king");
+    let mut safe = Bitboard::EMPTY;
+    for to in tables::king_attacks(king) & targets {
+        if king_safe_after(position, us, king, king, to, occupied) {
+            safe |= Bitboard::single(to);
+        }
+    }
+    emit_normal(us, piece, king, safe, listener)
+}
+
+/// Our pieces that stand alone between the king and an enemy slider, so
+/// moving them off that line would expose the king.
+///
+/// Snipers are found by asking which enemy sliders would reach the king on
+/// an *empty* board, then counting the blockers in between. A dragon's or
+/// horse's one-step sidesteps can never pin — nothing fits between them and
+/// the king — so only the true slider lines are searched.
+fn pinned_pieces(position: &Position, us: Color, king: Square, occupied: Bitboard) -> Bitboard {
+    let their = position.player_bb(us.flip());
+    let rooks = (position.piece_kind_bb(PieceKind::Rook)
+        | position.piece_kind_bb(PieceKind::ProRook))
+        & their;
+    let bishops = (position.piece_kind_bb(PieceKind::Bishop)
+        | position.piece_kind_bb(PieceKind::ProBishop))
+        & their;
+    let lances = position.piece_kind_bb(PieceKind::Lance) & their;
+
+    let empty = Bitboard::EMPTY;
+    let snipers = (tables::rook_attacks(king, empty) & rooks)
+        | (tables::bishop_attacks(king, empty) & bishops)
+        // A lance only attacks forwards, so the squares it could pin from
+        // are the ones our own lance would attack from the king.
+        | (tables::lance_attacks(us, king, empty) & lances);
+
+    let mut pinned = Bitboard::EMPTY;
+    for sniper in snipers {
+        let blockers = tables::between(king, sniper) & occupied;
+        if blockers.count() == 1 {
+            pinned |= blockers;
+        }
+    }
+    // Only our own pieces are pinned; one of theirs in the way is their
+    // discovered-check opportunity, not our problem.
+    pinned & position.player_bb(us)
 }
 
 fn generate_drops(

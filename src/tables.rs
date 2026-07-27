@@ -138,9 +138,63 @@ pub(crate) fn diagonal_attacks(square: Square) -> Bitboard {
     DIAGONAL_ATTACKS[square.array_index()]
 }
 
+/// `LINE[a][b]`: every square of the rank, file or diagonal through `a` and
+/// `b`, both included and extended to the board edges; empty when they are
+/// not aligned (and on the diagonal, `LINE[a][a]`).
+///
+/// This is exactly where a piece pinned against its king may still move: a
+/// pin means the piece stands on such a line, and staying on it — including
+/// capturing the pinner — keeps the line blocked.
+static LINE: [[Bitboard; 81]; 81] = line_table();
+
+/// The four axes; walking each one both ways covers the whole line.
+const AXES: [(i8, i8); 4] = [(1, 0), (0, 1), (1, 1), (1, -1)];
+
+const fn line_table() -> [[Bitboard; 81]; 81] {
+    let mut table = [[Bitboard::EMPTY; 81]; 81];
+    let mut a = 0;
+    while a < 81 {
+        let mut axis = 0;
+        while axis < 4 {
+            let (file_delta, rank_delta) = AXES[axis];
+            let mut line = 1u128 << a;
+            let mut direction = 0;
+            while direction < 2 {
+                let sign: i8 = if direction == 0 { 1 } else { -1 };
+                let (mut file, mut rank) = (file_of(a), rank_of(a));
+                loop {
+                    file += sign * file_delta;
+                    rank += sign * rank_delta;
+                    if !on_board(file, rank) {
+                        break;
+                    }
+                    line |= 1 << index_of(file, rank);
+                }
+                direction += 1;
+            }
+            // Every other square of this line shares it.
+            let mut rest = line & !(1 << a);
+            while rest != 0 {
+                let b = rest.trailing_zeros() as usize;
+                table[a][b] = Bitboard::from_bits(line);
+                rest &= rest - 1;
+            }
+            axis += 1;
+        }
+        a += 1;
+    }
+    table
+}
+
 /// Squares strictly between `a` and `b` (empty when not aligned).
 pub(crate) fn between(a: Square, b: Square) -> Bitboard {
     BETWEEN[a.array_index()][b.array_index()]
+}
+
+/// The full line through `a` and `b` (empty when not aligned).
+#[inline(always)]
+pub(crate) fn line(a: Square, b: Square) -> Bitboard {
+    LINE[a.array_index()][b.array_index()]
 }
 
 /// Squares at relative rank `1..=max_relative_rank` for `color`, i.e. the
