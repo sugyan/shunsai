@@ -1,8 +1,10 @@
 //! Perft throughput (nodes/sec) on the fixed positions of DESIGN.md §4.
 
+use std::ops::ControlFlow;
 use std::time::Duration;
 
 use criterion::{BenchmarkId, Criterion, SamplingMode, Throughput, criterion_group};
+use shogi_core::Move;
 use shunsai::Position;
 
 use crate::common;
@@ -33,16 +35,16 @@ fn perft_cb(position: &mut Position, depth: u32) -> u64 {
     }
     if depth == 1 {
         let mut nodes = 0;
-        position.generate_moves(|set| {
+        let _ = position.generate_moves(|set| {
             nodes += set.len() as u64;
-            false
+            ControlFlow::Continue(())
         });
         return nodes;
     }
     let mut moves = Vec::with_capacity(128);
-    position.generate_moves(|set| {
+    let _ = position.generate_moves(|set| {
         moves.extend(set);
-        false
+        ControlFlow::Continue(())
     });
     let mut nodes = 0;
     for mv in moves {
@@ -50,6 +52,44 @@ fn perft_cb(position: &mut Position, depth: u32) -> u64 {
         nodes += perft_cb(position, depth - 1);
         position.undo_move(mv);
     }
+    nodes
+}
+
+/// The callback API again, but with one buffer reused for the whole tree
+/// instead of a fresh `Vec` per internal node.
+///
+/// The leaf path is identical to `perft_cb`, so the difference this id
+/// measures is purely the internal-node collection that the callback still
+/// forces: `do_move` needs `&mut Position`, which the listener's borrow
+/// blocks, so anything deeper than one ply has to collect first. Each ply
+/// takes a slice of the shared buffer and truncates back on the way out.
+fn perft_cb_buf(position: &mut Position, depth: u32, buf: &mut Vec<Move>) -> u64 {
+    if depth == 0 {
+        return 1;
+    }
+    if depth == 1 {
+        let mut nodes = 0;
+        let _ = position.generate_moves(|set| {
+            nodes += set.len() as u64;
+            ControlFlow::Continue(())
+        });
+        return nodes;
+    }
+    let base = buf.len();
+    let _ = position.generate_moves(|set| {
+        buf.extend(set);
+        ControlFlow::Continue(())
+    });
+    let mut nodes = 0;
+    let mut i = base;
+    while i < buf.len() {
+        let mv = buf[i];
+        position.do_move(mv);
+        nodes += perft_cb_buf(position, depth - 1, buf);
+        position.undo_move(mv);
+        i += 1;
+    }
+    buf.truncate(base);
     nodes
 }
 
@@ -67,9 +107,13 @@ fn bench_perft(c: &mut Criterion) {
     ] {
         let mut position = common::position(sfen);
         // Guard: the measured work is exactly the claimed node count, and
-        // both APIs walk the same tree.
+        // all three drivers walk the same tree.
         assert_eq!(perft(&mut position, depth), nodes);
         assert_eq!(perft_cb(&mut position, depth), nodes);
+        assert_eq!(
+            perft_cb_buf(&mut position, depth, &mut Vec::with_capacity(4096)),
+            nodes
+        );
         group.throughput(Throughput::Elements(nodes));
         group.bench_with_input(BenchmarkId::new(name, depth), &depth, |b, &depth| {
             b.iter(|| perft(&mut position, depth))
@@ -78,6 +122,16 @@ fn bench_perft(c: &mut Criterion) {
             BenchmarkId::new(format!("{name}-cb"), depth),
             &depth,
             |b, &depth| b.iter(|| perft_cb(&mut position, depth)),
+        );
+        group.bench_with_input(
+            BenchmarkId::new(format!("{name}-cb-buf"), depth),
+            &depth,
+            |b, &depth| {
+                // Allocated once, outside the measured closure: the point of
+                // this id is that the tree walk itself never allocates.
+                let mut buf = Vec::with_capacity(4096);
+                b.iter(|| perft_cb_buf(&mut position, depth, &mut buf))
+            },
         );
     }
     group.finish();

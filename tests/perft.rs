@@ -4,6 +4,7 @@
 use shogi_core::PartialPosition;
 use shogi_usi_parser::FromUsi;
 use shunsai::Position;
+use std::ops::ControlFlow;
 
 const MAX_MOVES_SFEN: &str = "R8/2K1S1SSk/4B4/9/9/9/9/9/1L1L1L3 b RBGSNLP3g3n17p 1";
 const MATSURI_SFEN: &str = "l6nl/5+P1gk/2np1S3/p1p4Pp/3P2Sp1/1PPb2P1P/P5GS1/R8/LN4bKL w GR5pnsg 1";
@@ -16,16 +17,16 @@ fn perft(position: &mut Position, depth: u32) -> u64 {
     }
     if depth == 1 {
         let mut nodes = 0;
-        position.generate_moves(|set| {
+        let _ = position.generate_moves(|set| {
             nodes += set.len() as u64;
-            false
+            ControlFlow::Continue(())
         });
         return nodes;
     }
     let mut moves = Vec::with_capacity(128);
-    position.generate_moves(|set| {
+    let _ = position.generate_moves(|set| {
         moves.extend(set);
-        false
+        ControlFlow::Continue(())
     });
     let mut nodes = 0;
     for mv in moves {

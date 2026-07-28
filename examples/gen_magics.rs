@@ -1,14 +1,23 @@
-//! Searches the magic multipliers for the magic slider backend and prints
+//! Searches the magic multipliers for the magic slider backend and writes
 //! `src/sliders/magics.rs`.
 //!
-//! Usage: `cargo run --release --example gen_magics > src/sliders/magics.rs`
+//! ```sh
+//! cargo run --release --example gen_magics             # regenerate
+//! cargo run --release --example gen_magics -- --check  # verify, as CI does
+//! ```
 //!
-//! Only the *constants* are generated here; the attack tables themselves are
-//! const-evaluated from them at compile time (see `src/sliders/magic.rs`).
-//! Nothing is ever copied from another engine — the search below is a plain
-//! brute force over a fixed-seed PRNG, and it verifies every candidate
-//! exhaustively before accepting it, so the output is reproducible and
-//! self-checking.
+//! Only the **multipliers** are generated. A multiplier is the result of a
+//! search and cannot be derived; everything else about a magic — the mask and
+//! both shifts — follows from the board geometry, so `src/sliders/magic.rs`
+//! derives it at compile time instead, and the attack tables are
+//! const-evaluated on top of that. Nothing is ever copied from another
+//! engine: the search below is a plain brute force over a fixed-seed PRNG,
+//! and it verifies every candidate exhaustively before accepting it, so the
+//! output is reproducible and self-checking.
+//!
+//! `--check` regenerates into memory and compares against the committed file,
+//! so "the constants in the repository are the ones this generator produces"
+//! is a property CI holds rather than something verified by hand once.
 //!
 //! ## What a magic does here
 //!
@@ -17,6 +26,13 @@
 //! For one line, the squares that can block are at most 7, and they always
 //! span fewer than 64 bits once the lowest one is shifted down to bit 0.
 //! The magic multiply gathers those scattered bits into a dense 7-bit index.
+
+use std::fmt::Write as _;
+use std::path::Path;
+
+/// The file this generator owns. Absolute, so the working directory of the
+/// `cargo run` does not matter.
+const OUTPUT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/src/sliders/magics.rs");
 
 /// splitmix64 (public-domain algorithm by Sebastiano Vigna); the fixed seed
 /// keeps the generated file byte-identical across runs.
@@ -96,16 +112,12 @@ fn subsets(mask: u64) -> Vec<u64> {
     out
 }
 
-struct Magic {
-    mask: u64,
-    magic: u64,
-    shift_in: u32,
-    shift_out: u32,
-}
-
-/// Finds a magic for one square/line, or panics. `shift_in` normalizes the
-/// relevant squares down to bit 0 so the whole computation fits in a `u64`.
-fn find_magic(index: usize, line: i8, state: &mut u64) -> Magic {
+/// Finds a multiplier for one square/line, or panics. Returns it alongside
+/// the index width it achieves, which is only reported for information.
+///
+/// The mask and shifts computed here are the same values `magic.rs` derives;
+/// they are needed to *run* the search but are not part of its output.
+fn find_magic(index: usize, line: i8, state: &mut u64) -> (u64, u32) {
     let relevant = relevant_mask(index, line);
     let shift_in = if relevant == 0 {
         0
@@ -148,54 +160,95 @@ fn find_magic(index: usize, line: i8, state: &mut u64) -> Magic {
             }
         }
         if ok {
-            return Magic {
-                mask,
-                magic,
-                shift_in,
-                shift_out,
-            };
+            return (magic, bits.max(1));
         }
     }
     panic!("no magic found for square {index}, line {line}");
 }
 
-fn emit(name: &str, line: i8, state: &mut u64) {
-    println!("/// Magics for the {name} line (rank delta {line} per file step).");
-    println!("pub(crate) static {name}_MAGICS: [Magic; 81] = [");
+/// Four per row keeps every line inside 100 columns.
+const PER_ROW: usize = 4;
+
+fn emit(out: &mut String, name: &str, line: i8, state: &mut u64) {
     let mut widest = 0;
-    for index in 0..81 {
-        let magic = find_magic(index, line, state);
-        widest = widest.max(64 - magic.shift_out);
-        println!(
-            "    Magic {{ mask: {:#018x}, magic: {:#018x}, shift_in: {}, shift_out: {} }},",
-            magic.mask, magic.magic, magic.shift_in, magic.shift_out
-        );
-    }
-    println!("];");
-    println!();
+    let multipliers: Vec<u64> = (0..81)
+        .map(|index| {
+            let (magic, bits) = find_magic(index, line, state);
+            widest = widest.max(bits);
+            magic
+        })
+        .collect();
     eprintln!("{name}: widest index = {widest} bits");
+
+    writeln!(
+        out,
+        "/// Multipliers for the {name} line (rank delta {line} per file step)."
+    )
+    .unwrap();
+    // The layout is chosen here, so rustfmt must leave it alone.
+    writeln!(out, "#[rustfmt::skip]").unwrap();
+    writeln!(out, "pub(crate) static {name}_MULTIPLIERS: [u64; 81] = [").unwrap();
+    for row in multipliers.chunks(PER_ROW) {
+        let cells: Vec<String> = row.iter().map(|magic| format!("{magic:#018x}")).collect();
+        writeln!(out, "    {},", cells.join(", ")).unwrap();
+    }
+    writeln!(out, "];").unwrap();
+    writeln!(out).unwrap();
+}
+
+fn generate() -> String {
+    let mut out = String::from(
+        "//! Magic multipliers for the magic slider backend (the M4 default).\n\
+         //!\n\
+         //! GENERATED FILE - do not edit by hand. Regenerate with:\n\
+         //!\n\
+         //! ```sh\n\
+         //! cargo run --release --example gen_magics\n\
+         //! ```\n\
+         //!\n\
+         //! The generator (`examples/gen_magics.rs`) brute-forces these from a fixed\n\
+         //! splitmix64 seed and verifies each candidate against every occupancy of its\n\
+         //! line before accepting it, so a rerun reproduces this file byte for byte —\n\
+         //! which CI checks on every run. These multipliers are the *only* generated\n\
+         //! part of the magic backend: `magic.rs` derives each mask and shift from the\n\
+         //! board geometry and const-evaluates the attack tables from there, so no\n\
+         //! table is ever transcribed from elsewhere.\n\
+         \n",
+    );
+    // One PRNG stream for the whole file keeps the output reproducible.
+    let mut state = 0x0000_5348_554e_5341;
+    emit(&mut out, "RANK", 0, &mut state);
+    emit(&mut out, "DIAGONAL_UP", 1, &mut state);
+    emit(&mut out, "DIAGONAL_DOWN", -1, &mut state);
+    // `emit` separates arrays with a blank line; the file does not end in one.
+    while out.ends_with("\n\n") {
+        out.pop();
+    }
+    out
 }
 
 fn main() {
-    println!("//! Magic multipliers for the magic slider backend (the M4 default).");
-    println!("//!");
-    println!("//! GENERATED FILE - do not edit by hand. Regenerate with:");
-    println!("//!");
-    println!("//! ```sh");
-    println!("//! cargo run --release --example gen_magics > src/sliders/magics.rs");
-    println!("//! ```");
-    println!("//!");
-    println!("//! The generator ([`examples/gen_magics.rs`]) brute-forces these from a");
-    println!("//! fixed splitmix64 seed and verifies each candidate against every");
-    println!("//! occupancy of its line before accepting it, so a rerun reproduces this");
-    println!("//! file byte for byte. The attack tables are const-evaluated from these");
-    println!("//! constants in `magic.rs`; no table is ever transcribed from elsewhere.");
-    println!();
-    println!("use super::magic::Magic;");
-    println!();
-    // One PRNG stream for the whole file keeps the output reproducible.
-    let mut state = 0x0000_5348_554e_5341;
-    emit("RANK", 0, &mut state);
-    emit("DIAGONAL_UP", 1, &mut state);
-    emit("DIAGONAL_DOWN", -1, &mut state);
+    let check = std::env::args().any(|argument| argument == "--check");
+    let generated = generate();
+    let path = Path::new(OUTPUT);
+
+    if check {
+        let committed = std::fs::read_to_string(path)
+            .unwrap_or_else(|error| panic!("cannot read {}: {error}", path.display()));
+        if committed != generated {
+            eprintln!(
+                "{} is not what the generator produces.\n\
+                 Regenerate it with:\n\
+                 \n    cargo run --release --example gen_magics\n",
+                path.display()
+            );
+            std::process::exit(1);
+        }
+        eprintln!("{} is up to date", path.display());
+        return;
+    }
+
+    std::fs::write(path, &generated)
+        .unwrap_or_else(|error| panic!("cannot write {}: {error}", path.display()));
+    eprintln!("wrote {}", path.display());
 }
