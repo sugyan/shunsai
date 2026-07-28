@@ -25,6 +25,8 @@ The project license is **`MIT OR Apache-2.0`**. To keep it clean, obey the follo
 
 **Other**
 - **Generate attack tables / magic numbers with our own generator** (never paste tables from elsewhere).
+- **`src/sliders/magics.rs` is generated — never edit it by hand.** It holds the magic multipliers and nothing else (mask and shifts are derived from the crate's own geometry at compile time). Regenerate with `cargo run --release --example gen_magics`; CI runs the same generator with `--check` and fails if the committed numbers are not its output.
+  - That CI check is a **licensing** guard, not a correctness one, and it is *not* redundant with the compile-time check in `magic.rs`. A magic only has to avoid mapping two occupancies with *different* attacks onto one slot, which is a loose condition — measured 2026-07-28, **72.7 % of single-bit corruptions of our multipliers still satisfy it** (11299 of 15552 flips) and build and pass every test. So "it works" is no evidence of "we generated it": without `--check`, a hand-edited or pasted number would ship silently. Keep both guards.
 - Run a **provenance scan** (distinctive-string search / code-similarity check) before publishing to crates.io.
 
 See "7. Licensing policy" in [DESIGN.md](./DESIGN.md) for the rationale.
