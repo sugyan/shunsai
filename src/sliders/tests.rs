@@ -8,11 +8,7 @@
 
 use shogi_core::{Color, Square};
 
-use super::magics::{DIAGONAL_DOWN_MAGICS, DIAGONAL_UP_MAGICS, RANK_MAGICS};
-use super::{
-    DIAGONAL_DOWN_LINE, DIAGONAL_UP_LINE, LineKind, RANK_LINE, lance_attacks, magic, naive, qugiy,
-    relevant_mask,
-};
+use super::{lance_attacks, magic, naive, qugiy};
 use crate::bitboard::Bitboard;
 
 /// splitmix64 (public-domain algorithm by Sebastiano Vigna).
@@ -97,32 +93,12 @@ fn bishop_backends_match_naive_exhaustively() {
     });
 }
 
-/// The generated magics describe a board geometry of their own (mask plus
-/// `shift_in`); it must be the same one the crate computes.
-#[test]
-fn generated_magic_masks_match_the_line_geometry() {
-    for (name, magics, line) in [
-        ("rank", &RANK_MAGICS, RANK_LINE),
-        ("diagonal-up", &DIAGONAL_UP_MAGICS, DIAGONAL_UP_LINE),
-        ("diagonal-down", &DIAGONAL_DOWN_MAGICS, DIAGONAL_DOWN_LINE),
-    ] as [(&str, &[magic::Magic; 81], LineKind); 3]
-    {
-        for square in Square::all() {
-            let index = square.array_index();
-            let entry = &magics[index];
-            assert_eq!(
-                (entry.mask as u128) << entry.shift_in,
-                relevant_mask(index, line),
-                "{name} magic mask for {square:?}"
-            );
-            assert_eq!(
-                entry.shift_out,
-                64 - entry.mask.count_ones().max(1),
-                "{name} shift_out for {square:?}"
-            );
-        }
-    }
-}
+// There is no test that the magic masks and shifts match the line geometry:
+// they are now *derived* from it (`magic::derive_magics`), so the two cannot
+// disagree. Whether each generated multiplier actually works is asserted at
+// compile time by `magic::line_table`, and whether the committed multipliers
+// are the ones our generator produces is checked in CI by
+// `cargo run --release --example gen_magics -- --check`.
 
 #[test]
 fn shared_lance_table_matches_naive_exhaustively() {
