@@ -12,6 +12,8 @@
 //! Pawn-drop-mate (打ち歩詰め) is excluded by simulating the drop and asking
 //! whether the opponent has any reply at all.
 
+use core::ops::ControlFlow;
+
 use shogi_core::{Color, Hand, Move, Piece, PieceKind, Square};
 
 use crate::bitboard::Bitboard;
@@ -138,17 +140,22 @@ impl Position {
     /// Calls `listener` with every group of legal moves for the side to
     /// move, including pawn-drop-mate exclusion.
     ///
-    /// Returning `true` from `listener` stops generation early — useful to
-    /// answer "is there any legal move?" without building the rest. No
-    /// empty [`MoveSet`] is ever passed.
+    /// Returning [`ControlFlow::Break`] from `listener` stops generation
+    /// early — useful to answer "is there any legal move?" without building
+    /// the rest — and is reported back as the return value, so the caller
+    /// can tell a full walk from an interrupted one. No empty [`MoveSet`]
+    /// is ever passed.
     ///
     /// The opponent's king square is never a destination: in illegal
     /// positions where that king could already be captured (unreachable
     /// through legal play, but constructible via [`Position::new`]), no
     /// king-capture move is generated — the rest of the result is
     /// unspecified there, but this function does not panic.
-    pub fn generate_moves(&self, listener: impl FnMut(MoveSet) -> bool) {
-        generate_legal(self, listener);
+    pub fn generate_moves(
+        &self,
+        listener: impl FnMut(MoveSet) -> ControlFlow<()>,
+    ) -> ControlFlow<()> {
+        generate_legal(self, listener)
     }
 
     /// All legal moves for the side to move.
@@ -157,14 +164,15 @@ impl Position {
     /// the callback form in hot code, which allocates nothing.
     pub fn legal_moves(&self) -> Vec<Move> {
         let mut moves = Vec::with_capacity(128);
-        self.generate_moves(|set| {
+        // The listener never breaks, so the walk is always `Continue`.
+        let _ = self.generate_moves(|set| {
             // A plain push loop rather than `extend`: `MoveSetIter` is not
             // `TrustedLen`, so `extend` re-checks the length bound per
             // element and measurably loses on drop-heavy positions.
             for mv in set {
                 moves.push(mv);
             }
-            false
+            ControlFlow::Continue(())
         });
         moves
     }
@@ -174,12 +182,7 @@ impl Position {
     /// Stops at the first group found, so it is far cheaper than
     /// `!legal_moves().is_empty()`.
     pub fn has_legal_moves(&self) -> bool {
-        let mut any = false;
-        self.generate_moves(|_| {
-            any = true;
-            true
-        });
-        any
+        self.generate_moves(|_| ControlFlow::Break(())).is_break()
     }
 
     /// Whether the side to move is in check.
@@ -253,7 +256,10 @@ fn king_safe_after(
     attackers_to(position, king_after, occupied_after, us.flip(), enemy_mask).is_empty()
 }
 
-pub(crate) fn generate_legal(position: &Position, mut listener: impl FnMut(MoveSet) -> bool) {
+pub(crate) fn generate_legal(
+    position: &Position,
+    mut listener: impl FnMut(MoveSet) -> ControlFlow<()>,
+) -> ControlFlow<()> {
     let us = position.side_to_move();
     let them = us.flip();
     let occupied = position.occupied();
@@ -264,25 +270,22 @@ pub(crate) fn generate_legal(position: &Position, mut listener: impl FnMut(MoveS
         None => Bitboard::EMPTY,
     };
 
-    if generate_normal(position, us, occupied, our, king, checkers, &mut listener) {
-        return;
-    }
-    generate_drops(position, us, occupied, king, checkers, &mut listener);
+    generate_normal(position, us, occupied, our, king, checkers, &mut listener)?;
+    generate_drops(position, us, occupied, king, checkers, &mut listener)
 }
 
 /// Splits the destinations of one piece into its promoting and
-/// non-promoting sets and hands them to `listener`. Returns whether the
-/// listener asked to stop.
+/// non-promoting sets and hands them to `listener`.
 #[inline]
 fn emit_normal(
     us: Color,
     piece: Piece,
     from: Square,
     attacks: Bitboard,
-    listener: &mut impl FnMut(MoveSet) -> bool,
-) -> bool {
+    listener: &mut impl FnMut(MoveSet) -> ControlFlow<()>,
+) -> ControlFlow<()> {
     if attacks.is_empty() {
-        return false;
+        return ControlFlow::Continue(());
     }
     let piece_kind = piece.piece_kind();
     let promotions = if piece_kind.promote().is_some() {
@@ -314,8 +317,8 @@ fn generate_normal(
     our: Bitboard,
     king: Option<Square>,
     checkers: Bitboard,
-    listener: &mut impl FnMut(MoveSet) -> bool,
-) -> bool {
+    listener: &mut impl FnMut(MoveSet) -> ControlFlow<()>,
+) -> ControlFlow<()> {
     // Never target our own pieces, nor the opponent's king: the latter is
     // only reachable in illegal positions, and "capturing" it would try to
     // send a king to hand in do_move.
@@ -330,11 +333,9 @@ fn generate_normal(
             for from in our {
                 let piece = position.piece_at(from).unwrap();
                 let attacks = tables::attacks_of(piece, from, occupied) & targets;
-                if emit_normal(us, piece, from, attacks, listener) {
-                    return true;
-                }
+                emit_normal(us, piece, from, attacks, listener)?;
             }
-            return false;
+            return ControlFlow::Continue(());
         }
     };
     let in_check = !checkers.is_empty();
@@ -357,11 +358,9 @@ fn generate_normal(
             }
             attacks = safe;
         }
-        if emit_normal(us, piece, from, attacks, listener) {
-            return true;
-        }
+        emit_normal(us, piece, from, attacks, listener)?;
     }
-    false
+    ControlFlow::Continue(())
 }
 
 fn generate_drops(
@@ -370,11 +369,11 @@ fn generate_drops(
     occupied: Bitboard,
     king: Option<Square>,
     checkers: Bitboard,
-    listener: &mut impl FnMut(MoveSet) -> bool,
-) {
+    listener: &mut impl FnMut(MoveSet) -> ControlFlow<()>,
+) -> ControlFlow<()> {
     let hand = position.hand(us);
     if hand == Hand::new() {
-        return;
+        return ControlFlow::Continue(());
     }
     let targets = match checkers.count() {
         0 => !occupied,
@@ -386,10 +385,10 @@ fn generate_drops(
             let checker = checkers.next().unwrap();
             tables::between(king, checker) & !occupied
         }
-        _ => return,
+        _ => return ControlFlow::Continue(()),
     };
     if targets.is_empty() {
-        return;
+        return ControlFlow::Continue(());
     }
     let has_pawn = hand.count(PieceKind::Pawn).unwrap_or(0) > 0;
     // Files that already contain one of our unpromoted pawns (nifu).
@@ -429,10 +428,11 @@ fn generate_drops(
                 }
             }
         }
-        if !drops.is_empty() && listener(MoveSet::Drop { piece, to: drops }) {
-            return;
+        if !drops.is_empty() {
+            listener(MoveSet::Drop { piece, to: drops })?;
         }
     }
+    ControlFlow::Continue(())
 }
 
 /// Whether dropping `piece` (a checking pawn) on `to` leaves the opponent
@@ -484,12 +484,12 @@ mod tests {
             let position = position_of(sfen);
             let mut expanded = Vec::new();
             let mut counted = 0;
-            position.generate_moves(|set| {
+            let _ = position.generate_moves(|set| {
                 assert!(!set.is_empty(), "empty MoveSet in {sfen}");
                 assert_eq!(set.len(), set.into_iter().count(), "len mismatch in {sfen}");
                 counted += set.len();
                 expanded.extend(set);
-                false
+                ControlFlow::Continue(())
             });
             let mut expected = position.legal_moves();
             assert_eq!(counted, expected.len(), "count mismatch in {sfen}");
@@ -506,7 +506,7 @@ mod tests {
     fn promotion_sets_are_consistent() {
         for sfen in CALLBACK_POSITIONS {
             let position = position_of(sfen);
-            position.generate_moves(|set| {
+            let _ = position.generate_moves(|set| {
                 if let MoveSet::Normal {
                     piece,
                     promotions,
@@ -526,7 +526,7 @@ mod tests {
                         );
                     }
                 }
-                false
+                ControlFlow::Continue(())
             });
         }
     }
@@ -536,10 +536,11 @@ mod tests {
         for sfen in CALLBACK_POSITIONS {
             let position = position_of(sfen);
             let mut seen = 0;
-            position.generate_moves(|_| {
+            let flow = position.generate_moves(|_| {
                 seen += 1;
-                true
+                ControlFlow::Break(())
             });
+            assert!(flow.is_break(), "early exit was not reported to the caller");
             assert_eq!(seen, 1, "generation did not stop after the first set");
             assert_eq!(
                 position.has_legal_moves(),

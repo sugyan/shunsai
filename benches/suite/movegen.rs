@@ -11,15 +11,16 @@
 
 use criterion::{Criterion, Throughput, criterion_group};
 use shunsai::Position;
+use std::ops::ControlFlow;
 
 use crate::common;
 
 /// Counts legal moves through the callback API without building any.
 fn count_moves(position: &Position) -> usize {
     let mut total = 0;
-    position.generate_moves(|set| {
+    let _ = position.generate_moves(|set| {
         total += set.len();
-        false
+        ControlFlow::Continue(())
     });
     total
 }
