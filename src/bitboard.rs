@@ -5,6 +5,29 @@ use core::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, 
 
 use shogi_core::Square;
 
+/// The file (1..=9) of the square with array index `index`.
+#[inline(always)]
+pub(crate) const fn file_of(index: usize) -> i8 {
+    (index / 9) as i8 + 1
+}
+
+/// The rank (1..=9) of the square with array index `index`.
+#[inline(always)]
+pub(crate) const fn rank_of(index: usize) -> i8 {
+    (index % 9) as i8 + 1
+}
+
+/// The array index of `(file, rank)`; both must be on the board.
+#[inline(always)]
+pub(crate) const fn index_of(file: i8, rank: i8) -> usize {
+    ((file - 1) * 9 + (rank - 1)) as usize
+}
+
+#[inline(always)]
+pub(crate) const fn on_board(file: i8, rank: i8) -> bool {
+    1 <= file && file <= 9 && 1 <= rank && rank <= 9
+}
+
 /// A set of squares, one bit per square.
 ///
 /// Bit `i` corresponds to the square whose [`Square::array_index`] is `i`,
@@ -23,6 +46,20 @@ impl Bitboard {
     #[inline(always)]
     pub const fn single(square: Square) -> Self {
         Self(1 << square.array_index())
+    }
+
+    /// The raw bits: bit `i` is the square with [`Square::array_index`] `i`.
+    #[inline(always)]
+    pub(crate) const fn bits(self) -> u128 {
+        self.0
+    }
+
+    /// A set from raw bits. Bits 81.. must be clear; the tables built with
+    /// this are const-evaluated, so a violation is a compile error.
+    #[inline(always)]
+    pub(crate) const fn from_bits(bits: u128) -> Self {
+        debug_assert!(bits >> 81 == 0);
+        Self(bits)
     }
 
     /// Whether `square` is in the set.

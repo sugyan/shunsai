@@ -1,14 +1,17 @@
 //! Attack tables and naive slider attacks.
 //!
-//! Step-piece attacks are precomputed per square (initialized lazily at first
-//! use); slider attacks walk rays square by square. Replacing these with
-//! const/Qugiy/magic implementations is a later, benchmark-driven decision.
-
-use std::sync::LazyLock;
+//! Step-piece attacks are const-evaluated per square; slider attacks walk
+//! rays square by square. Replacing the latter with Qugiy/magic
+//! implementations is a later, benchmark-driven decision.
+//!
+//! The table builders work on raw [`Square::array_index`] arithmetic rather
+//! than [`Square::shift`], which is not a `const fn`. Every const table is
+//! checked against a `Square`-based reference implementation in the tests
+//! below.
 
 use shogi_core::{Color, Piece, PieceKind, Square};
 
-use crate::bitboard::Bitboard;
+use crate::bitboard::{Bitboard, file_of, index_of, on_board, rank_of};
 
 /// `(file_delta, rank_delta)` steps, from Black's point of view
 /// (Black moves toward rank 1, i.e. negative rank delta).
@@ -29,56 +32,81 @@ const KING_STEPS: [(i8, i8); 8] = [
     (1, 1),
 ];
 
-fn step_table(steps: &[(i8, i8)]) -> [Bitboard; 81] {
+const fn step_table(steps: &[(i8, i8)]) -> [Bitboard; 81] {
     let mut table = [Bitboard::EMPTY; 81];
-    for square in Square::all() {
-        for &(file_delta, rank_delta) in steps {
-            if let Some(to) = square.shift(file_delta, rank_delta) {
-                table[square.array_index()] |= Bitboard::single(to);
+    let mut index = 0;
+    while index < 81 {
+        let (file, rank) = (file_of(index), rank_of(index));
+        let mut bits = 0u128;
+        let mut i = 0;
+        while i < steps.len() {
+            let (file_delta, rank_delta) = steps[i];
+            let (to_file, to_rank) = (file + file_delta, rank + rank_delta);
+            if on_board(to_file, to_rank) {
+                bits |= 1 << index_of(to_file, to_rank);
             }
+            i += 1;
         }
+        table[index] = Bitboard::from_bits(bits);
+        index += 1;
     }
     table
 }
 
-/// Builds `[Black's table, White's table]`; White's steps are the reflection
-/// of Black's.
-fn step_table_both(steps: &[(i8, i8)]) -> [[Bitboard; 81]; 2] {
-    let flipped: Vec<(i8, i8)> = steps
-        .iter()
-        .map(|&(file_delta, rank_delta)| (-file_delta, -rank_delta))
-        .collect();
-    [step_table(steps), step_table(&flipped)]
+/// Reflects Black's steps into White's (rotate the board 180°).
+const fn flip_steps<const N: usize>(steps: [(i8, i8); N]) -> [(i8, i8); N] {
+    let mut flipped = steps;
+    let mut i = 0;
+    while i < N {
+        let (file_delta, rank_delta) = steps[i];
+        flipped[i] = (-file_delta, -rank_delta);
+        i += 1;
+    }
+    flipped
 }
 
-static PAWN_ATTACKS: LazyLock<[[Bitboard; 81]; 2]> = LazyLock::new(|| step_table_both(&PAWN_STEPS));
-static KNIGHT_ATTACKS: LazyLock<[[Bitboard; 81]; 2]> =
-    LazyLock::new(|| step_table_both(&KNIGHT_STEPS));
-static SILVER_ATTACKS: LazyLock<[[Bitboard; 81]; 2]> =
-    LazyLock::new(|| step_table_both(&SILVER_STEPS));
-static GOLD_ATTACKS: LazyLock<[[Bitboard; 81]; 2]> = LazyLock::new(|| step_table_both(&GOLD_STEPS));
-static KING_ATTACKS: LazyLock<[Bitboard; 81]> = LazyLock::new(|| step_table(&KING_STEPS));
-static ORTHOGONAL_ATTACKS: LazyLock<[Bitboard; 81]> =
-    LazyLock::new(|| step_table(&ORTHOGONAL_STEPS));
-static DIAGONAL_ATTACKS: LazyLock<[Bitboard; 81]> = LazyLock::new(|| step_table(&DIAGONAL_STEPS));
+/// Builds `[Black's table, White's table]`.
+const fn step_table_both<const N: usize>(steps: [(i8, i8); N]) -> [[Bitboard; 81]; 2] {
+    [step_table(&steps), step_table(&flip_steps(steps))]
+}
+
+static PAWN_ATTACKS: [[Bitboard; 81]; 2] = step_table_both(PAWN_STEPS);
+static KNIGHT_ATTACKS: [[Bitboard; 81]; 2] = step_table_both(KNIGHT_STEPS);
+static SILVER_ATTACKS: [[Bitboard; 81]; 2] = step_table_both(SILVER_STEPS);
+static GOLD_ATTACKS: [[Bitboard; 81]; 2] = step_table_both(GOLD_STEPS);
+static KING_ATTACKS: [Bitboard; 81] = step_table(&KING_STEPS);
+static ORTHOGONAL_ATTACKS: [Bitboard; 81] = step_table(&ORTHOGONAL_STEPS);
+static DIAGONAL_ATTACKS: [Bitboard; 81] = step_table(&DIAGONAL_STEPS);
 
 /// `BETWEEN[a][b]`: the squares strictly between `a` and `b` if they share a
 /// rank, file or diagonal; empty otherwise.
-static BETWEEN: LazyLock<Box<[[Bitboard; 81]; 81]>> = LazyLock::new(|| {
-    let mut table = Box::new([[Bitboard::EMPTY; 81]; 81]);
-    for from in Square::all() {
-        for (file_delta, rank_delta) in KING_STEPS {
-            let mut between = Bitboard::EMPTY;
-            let mut current = from;
-            while let Some(next) = current.shift(file_delta, rank_delta) {
-                table[from.array_index()][next.array_index()] = between;
-                between |= Bitboard::single(next);
-                current = next;
+static BETWEEN: [[Bitboard; 81]; 81] = between_table();
+
+const fn between_table() -> [[Bitboard; 81]; 81] {
+    let mut table = [[Bitboard::EMPTY; 81]; 81];
+    let mut from = 0;
+    while from < 81 {
+        let mut step = 0;
+        while step < KING_STEPS.len() {
+            let (file_delta, rank_delta) = KING_STEPS[step];
+            let (mut file, mut rank) = (file_of(from), rank_of(from));
+            let mut between = 0u128;
+            loop {
+                file += file_delta;
+                rank += rank_delta;
+                if !on_board(file, rank) {
+                    break;
+                }
+                let to = index_of(file, rank);
+                table[from][to] = Bitboard::from_bits(between);
+                between |= 1 << to;
             }
+            step += 1;
         }
+        from += 1;
     }
     table
-});
+}
 
 pub(crate) fn pawn_attacks(color: Color, square: Square) -> Bitboard {
     PAWN_ATTACKS[color.array_index()][square.array_index()]
@@ -115,35 +143,10 @@ pub(crate) fn between(a: Square, b: Square) -> Bitboard {
     BETWEEN[a.array_index()][b.array_index()]
 }
 
-/// Walks each ray one square at a time, stopping at (and including) the first
-/// occupied square.
-fn ray_attacks(square: Square, occupied: Bitboard, steps: &[(i8, i8)]) -> Bitboard {
-    let mut attacks = Bitboard::EMPTY;
-    for &(file_delta, rank_delta) in steps {
-        let mut current = square;
-        while let Some(next) = current.shift(file_delta, rank_delta) {
-            attacks |= Bitboard::single(next);
-            if occupied.contains(next) {
-                break;
-            }
-            current = next;
-        }
-    }
-    attacks
-}
-
-pub(crate) fn lance_attacks(color: Color, square: Square, occupied: Bitboard) -> Bitboard {
-    let rank_delta = if color == Color::Black { -1 } else { 1 };
-    ray_attacks(square, occupied, &[(0, rank_delta)])
-}
-
-pub(crate) fn bishop_attacks(square: Square, occupied: Bitboard) -> Bitboard {
-    ray_attacks(square, occupied, &DIAGONAL_STEPS)
-}
-
-pub(crate) fn rook_attacks(square: Square, occupied: Bitboard) -> Bitboard {
-    ray_attacks(square, occupied, &ORTHOGONAL_STEPS)
-}
+// Slider attacks live in `crate::sliders`, which is the swap boundary for
+// the M4 backends; these are the crate-wide entry points.
+pub(crate) use crate::sliders::active::{bishop_attacks, rook_attacks};
+pub(crate) use crate::sliders::lance_attacks;
 
 /// The squares attacked by `piece` on `square`, given `occupied` (relevant to
 /// sliders only).
@@ -173,6 +176,75 @@ mod tests {
 
     fn sq(file: u8, rank: u8) -> Square {
         Square::new(file, rank).unwrap()
+    }
+
+    /// Reference implementation of [`step_table`] in terms of
+    /// [`Square::shift`] — the const builders index raw `array_index`
+    /// arithmetic instead, so every table is cross-checked against this.
+    fn step_table_reference(steps: &[(i8, i8)]) -> [Bitboard; 81] {
+        let mut table = [Bitboard::EMPTY; 81];
+        for square in Square::all() {
+            for &(file_delta, rank_delta) in steps {
+                if let Some(to) = square.shift(file_delta, rank_delta) {
+                    table[square.array_index()] |= Bitboard::single(to);
+                }
+            }
+        }
+        table
+    }
+
+    fn step_table_both_reference(steps: &[(i8, i8)]) -> [[Bitboard; 81]; 2] {
+        let flipped: Vec<(i8, i8)> = steps
+            .iter()
+            .map(|&(file_delta, rank_delta)| (-file_delta, -rank_delta))
+            .collect();
+        [step_table_reference(steps), step_table_reference(&flipped)]
+    }
+
+    #[test]
+    fn const_index_arithmetic_matches_square() {
+        for square in Square::all() {
+            let index = square.array_index();
+            assert_eq!(file_of(index), square.file() as i8);
+            assert_eq!(rank_of(index), square.rank() as i8);
+            assert_eq!(index_of(square.file() as i8, square.rank() as i8), index);
+        }
+    }
+
+    #[test]
+    fn const_step_tables_match_reference() {
+        for (name, table, steps) in [
+            ("king", &KING_ATTACKS, &KING_STEPS[..]),
+            ("orthogonal", &ORTHOGONAL_ATTACKS, &ORTHOGONAL_STEPS[..]),
+            ("diagonal", &DIAGONAL_ATTACKS, &DIAGONAL_STEPS[..]),
+        ] {
+            assert_eq!(*table, step_table_reference(steps), "{name}");
+        }
+        for (name, table, steps) in [
+            ("pawn", &PAWN_ATTACKS, &PAWN_STEPS[..]),
+            ("knight", &KNIGHT_ATTACKS, &KNIGHT_STEPS[..]),
+            ("silver", &SILVER_ATTACKS, &SILVER_STEPS[..]),
+            ("gold", &GOLD_ATTACKS, &GOLD_STEPS[..]),
+        ] {
+            assert_eq!(*table, step_table_both_reference(steps), "{name}");
+        }
+    }
+
+    #[test]
+    fn const_between_table_matches_reference() {
+        let mut reference = Box::new([[Bitboard::EMPTY; 81]; 81]);
+        for from in Square::all() {
+            for (file_delta, rank_delta) in KING_STEPS {
+                let mut between = Bitboard::EMPTY;
+                let mut current = from;
+                while let Some(next) = current.shift(file_delta, rank_delta) {
+                    reference[from.array_index()][next.array_index()] = between;
+                    between |= Bitboard::single(next);
+                    current = next;
+                }
+            }
+        }
+        assert_eq!(BETWEEN, *reference);
     }
 
     #[test]

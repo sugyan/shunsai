@@ -5,7 +5,8 @@
       "rev": "6858e2473182d36fcaf51580dfeb8501c5d7584e",
       "short_rev": "6858e24",
       "branch": "claude/m2-benchmark-measurement-30b935",
-      "dirty": false
+      "dirty": false,
+      "committed": "2026-07-24T16:45:18+09:00"
     },
     "rustc": "rustc 1.94.1 (e408947bf 2026-03-25)",
     "criterion": "0.8.2",

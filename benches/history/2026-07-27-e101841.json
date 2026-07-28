@@ -1,0 +1,155 @@
+{
+  "meta": {
+    "date": "2026-07-27",
+    "git": {
+      "rev": "e101841c3499e236a0409f765a84095e58eb81d3",
+      "short_rev": "e101841",
+      "branch": "claude/m4-const-tables",
+      "dirty": false,
+      "committed": "2026-07-27T12:11:46+09:00"
+    },
+    "rustc": "rustc 1.94.1 (e408947bf 2026-03-25)",
+    "criterion": "0.8.2",
+    "cpu": "Apple M4 Pro",
+    "os": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+    "arch": "arm64",
+    "position_sets": [
+      "games-v1",
+      "sampled-v1"
+    ],
+    "note": "const-evaluated attack tables (LazyLock removed) - neutral, all deltas within noise"
+  },
+  "results": {
+    "do_undo/games-v1": {
+      "mean_ns": 6712.099480747344,
+      "mean_stderr_ns": 7.062768636872768,
+      "median_ns": 6710.173507713285,
+      "std_dev_ns": 70.89995654428678,
+      "throughput": {
+        "Elements": 614
+      },
+      "per_element_ns": 10.931758111966358,
+      "elements_per_sec": 91476594.13588361
+    },
+    "internals/attackers-to": {
+      "mean_ns": 9517.602314802307,
+      "mean_stderr_ns": 20.023052992827147,
+      "median_ns": 9484.948809523808,
+      "std_dev_ns": 201.65085737060502,
+      "throughput": {
+        "Elements": 243
+      },
+      "per_element_ns": 39.16708771523583,
+      "elements_per_sec": 25531640.42398292
+    },
+    "internals/bishop-attacks": {
+      "mean_ns": 3052.8624475826077,
+      "mean_stderr_ns": 7.630557509752839,
+      "median_ns": 3041.3682458179323,
+      "std_dev_ns": 76.46366278181581,
+      "throughput": {
+        "Elements": 243
+      },
+      "per_element_ns": 12.56321994889962,
+      "elements_per_sec": 79597428.37166418
+    },
+    "internals/lance-attacks": {
+      "mean_ns": 2341.907187545155,
+      "mean_stderr_ns": 2.340157385347897,
+      "median_ns": 2346.0458431603774,
+      "std_dev_ns": 23.476004141226255,
+      "throughput": {
+        "Elements": 486
+      },
+      "per_element_ns": 4.818739069022953,
+      "elements_per_sec": 207523168.5459906
+    },
+    "internals/rook-attacks": {
+      "mean_ns": 4872.149213865148,
+      "mean_stderr_ns": 12.911513726686735,
+      "median_ns": 4855.977352448597,
+      "std_dev_ns": 130.59188900156434,
+      "throughput": {
+        "Elements": 243
+      },
+      "per_element_ns": 20.049996764877154,
+      "elements_per_sec": 49875319.76821878
+    },
+    "movegen/matsuri": {
+      "mean_ns": 790.2817098636183,
+      "mean_stderr_ns": 0.7330536554710537,
+      "median_ns": 787.4578473772954,
+      "std_dev_ns": 7.337621486881466,
+      "throughput": null
+    },
+    "movegen/maxmoves": {
+      "mean_ns": 2401.2006526532946,
+      "mean_stderr_ns": 1.167290790676076,
+      "median_ns": 2401.6966313630783,
+      "std_dev_ns": 11.71844498995603,
+      "throughput": null
+    },
+    "movegen/sampled-v1": {
+      "mean_ns": 35121.387980428495,
+      "mean_stderr_ns": 52.16199889268178,
+      "median_ns": 34990.05689548547,
+      "std_dev_ns": 522.6807245748352,
+      "throughput": {
+        "Elements": 40
+      },
+      "per_element_ns": 878.0346995107124,
+      "elements_per_sec": 1138907.1531651916
+    },
+    "movegen/sampled-v1-check": {
+      "mean_ns": 10090.39270315184,
+      "mean_stderr_ns": 11.243038296458778,
+      "median_ns": 10091.273587397198,
+      "std_dev_ns": 113.08187032939287,
+      "throughput": {
+        "Elements": 9
+      },
+      "per_element_ns": 1121.1547447946489,
+      "elements_per_sec": 891937.5355122457
+    },
+    "movegen/startpos": {
+      "mean_ns": 473.116315115042,
+      "mean_stderr_ns": 0.44523550390822103,
+      "median_ns": 472.56695127241085,
+      "std_dev_ns": 4.460426589036145,
+      "throughput": null
+    },
+    "perft/matsuri/3": {
+      "mean_ns": 22570596.652173914,
+      "mean_stderr_ns": 33189.91012754203,
+      "median_ns": 22572991.847826086,
+      "std_dev_ns": 151395.91150113504,
+      "throughput": {
+        "Elements": 4809015
+      },
+      "per_element_ns": 4.693392857409243,
+      "elements_per_sec": 213065479.57547298
+    },
+    "perft/maxmoves/2": {
+      "mean_ns": 2647555.7428571433,
+      "mean_stderr_ns": 3386.8454039948515,
+      "median_ns": 2645710.9788359785,
+      "std_dev_ns": 15565.704245159171,
+      "throughput": {
+        "Elements": 105677
+      },
+      "per_element_ns": 25.053282576692595,
+      "elements_per_sec": 39914929.18897236
+    },
+    "perft/startpos/4": {
+      "mean_ns": 12790965.27820513,
+      "mean_stderr_ns": 23114.930038345046,
+      "median_ns": 12782459.410256412,
+      "std_dev_ns": 106438.76381434566,
+      "throughput": {
+        "Elements": 719731
+      },
+      "per_element_ns": 17.771869320906188,
+      "elements_per_sec": 56268700.94209144
+    }
+  }
+}

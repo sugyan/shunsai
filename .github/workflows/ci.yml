@@ -22,6 +22,11 @@ jobs:
       - run: cargo test
       # Compile the criterion benches; never run/measure them in CI.
       - run: cargo bench --no-run --all-features
+      # The magic multipliers are the one generated file in the tree. Re-run
+      # the search (~0.4 s) and fail if it disagrees, so "these constants are
+      # our own generator's output" stays a checked property rather than a
+      # claim. Whether each multiplier *works* is asserted at compile time.
+      - run: cargo run --example gen_magics -- --check
 
   # Deep perft (initial position depth 5/6) is #[ignore]d in the normal run.
   perft-deep:

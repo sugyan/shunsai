@@ -116,6 +116,10 @@ def collect_meta(note: str) -> dict:
             "short_rev": run("git", "rev-parse", "--short", "HEAD"),
             "branch": run("git", "branch", "--show-current"),
             "dirty": dirty,
+            # Orders the history table. Several entries a day are normal
+            # during an optimization run, and sorting those by revision
+            # hash would scramble them.
+            "committed": run("git", "show", "-s", "--format=%cI", "HEAD"),
         },
         "rustc": run("rustc", "-V"),
         "criterion": criterion_version(),
@@ -137,7 +141,9 @@ def markdown_table() -> str:
             result = results.get(full_id)
             cells.append(fmt(result) if result else "-")
         cells.append(meta.get("note", ""))
-        rows.append((meta["date"], path.name, "| " + " | ".join(cells) + " |"))
+        # Entries recorded before `committed` existed fall back to the date.
+        order = meta["git"].get("committed") or meta["date"]
+        rows.append((order, path.name, "| " + " | ".join(cells) + " |"))
     rows.sort(key=lambda row: (row[0], row[1]))
     header = ["date", "rev"] + [name for name, _, _ in HEADLINE_COLUMNS] + ["note"]
     lines = [
