@@ -1,13 +1,29 @@
 //! `legal_moves()` cost per position: the fixed positions of DESIGN.md §4
 //! plus the sampled real-game fixture (`benches/positions/sampled-v1.sfen`).
 //!
-//! Measures the M1 allocating `Vec` API; the M3 callback API will get new
-//! `-cb` ids (bench ids are append-only, see BENCHMARKS.md).
+//! The plain ids measure the M1 allocating `Vec` API; the `-cb` ids measure
+//! the M3 callback API on the same work (bench ids are append-only, see
+//! BENCHMARKS.md).
+//!
+//! The `-cb` variants sum `MoveSet::len()`, which is the callback API's
+//! reason to exist: no `Move` is ever materialized and nothing is
+//! allocated.
 
 use criterion::{Criterion, Throughput, criterion_group};
 use shunsai::Position;
+use std::ops::ControlFlow;
 
 use crate::common;
+
+/// Counts legal moves through the callback API without building any.
+fn count_moves(position: &Position) -> usize {
+    let mut total = 0;
+    let _ = position.generate_moves(|set| {
+        total += set.len();
+        ControlFlow::Continue(())
+    });
+    total
+}
 
 fn bench_movegen(c: &mut Criterion) {
     let mut group = c.benchmark_group("movegen");
@@ -18,7 +34,9 @@ fn bench_movegen(c: &mut Criterion) {
         ("maxmoves", common::MAX_MOVES_SFEN),
     ] {
         let position = common::position(sfen);
+        assert_eq!(count_moves(&position), position.legal_moves().len());
         group.bench_function(name, |b| b.iter(|| position.legal_moves()));
+        group.bench_function(format!("{name}-cb"), |b| b.iter(|| count_moves(&position)));
     }
 
     let sampled = common::sampled_positions();
@@ -38,6 +56,15 @@ fn bench_movegen(c: &mut Criterion) {
                 let mut total = 0;
                 for position in positions {
                     total += position.legal_moves().len();
+                }
+                total
+            })
+        });
+        group.bench_function(format!("{name}-cb"), |b| {
+            b.iter(|| {
+                let mut total = 0;
+                for position in positions {
+                    total += count_moves(position);
                 }
                 total
             })

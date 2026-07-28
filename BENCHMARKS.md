@@ -40,11 +40,15 @@ rustc, and criterion versions. The full suite takes roughly 3–5 minutes.
 | `perft/startpos/4` | perft(4) from the initial position, leaf bulk counting | Elements = 719,731 nodes |
 | `perft/matsuri/3` | perft(3) from the matsuri midgame position | Elements = 4,809,015 nodes |
 | `perft/maxmoves/2` | perft(2) from the max-legal-moves position | Elements = 105,677 nodes |
+| `perft/{startpos,matsuri,maxmoves}-cb/<d>` | the same trees through the callback API | as above |
+| `perft/{startpos,matsuri,maxmoves}-cb-buf/<d>` | the same again, with one buffer reused for the whole tree instead of a `Vec` per internal node | as above |
 | `movegen/startpos` | one `legal_moves()` call | — |
 | `movegen/matsuri` | one `legal_moves()` call | — |
 | `movegen/maxmoves` | one `legal_moves()` call | — |
+| `movegen/{startpos,matsuri,maxmoves}-cb` | the same, counted through the callback API | — |
 | `movegen/sampled-v1` | `legal_moves()` over all 40 sampled real-game positions | Elements = positions |
 | `movegen/sampled-v1-check` | same, restricted to the in-check subset (evasions) | Elements = positions |
+| `movegen/sampled-v1{,-check}-cb` | the same two sweeps through the callback API | Elements = positions |
 | `do_undo/games-v1` | `do_move` all + `undo_move` all over 4 real games | Elements = do+undo pairs |
 | `internals/bishop-attacks` | `bishop_attacks(sq, occ)`, 81 squares × 3 positions | Elements = calls |
 | `internals/rook-attacks` | `rook_attacks(sq, occ)`, same sweep | Elements = calls |
@@ -62,10 +66,22 @@ what a backend-adoption decision reads. Selecting a backend for the
 cargo bench --features bench-internals,slider-qugiy
 ```
 
-The `movegen/*` ids measure the M1 allocating `Vec` API; the planned M3
-callback API will be added under new `-cb` ids. Perft bench setup asserts
-the known node counts, so a wrong-depth or broken-movegen run fails instead
-of recording garbage.
+The plain `perft/*` and `movegen/*` ids measure the allocating
+`legal_moves()` wrapper; the `-cb` ids measure the same work through the M3
+callback API (`generate_moves`), where nothing is allocated and no `Move` is
+built — `perft/*-cb` counts leaves straight off `MoveSet::len()`. Perft
+bench setup asserts the known node counts for **every** driver, so a
+wrong-depth run, a broken movegen, or the drivers disagreeing all fail
+instead of recording garbage.
+
+The `-cb-buf` ids isolate the one cost the callback API does *not* remove.
+`do_move` needs `&mut Position`, which the listener's borrow blocks, so
+anything deeper than one ply has to collect the moves before playing them —
+and `-cb` does that with a fresh `Vec` per internal node. `-cb-buf` runs the
+identical tree with a single buffer threaded through the recursion, each ply
+taking a slice off the end and truncating back on the way out, allocated once
+outside the measured closure. The leaf path is the same bulk count in both,
+so the difference is purely internal-node collection.
 
 ## Bench-id stability contract
 
@@ -140,4 +156,5 @@ hand.
 | 2026-07-24 | 6858e24 | 56.1 | 207.1 | 0.79 | 0.89 | 10.9 | M2 naive baseline (M1 implementation) |
 | 2026-07-27 | e101841 | 56.3 | 213.1 | 0.79 | 0.88 | 10.9 | const-evaluated attack tables (LazyLock removed) - neutral, all deltas within noise |
 | 2026-07-27 | 8de28d8 | 97.7 | 326.9 | 0.52 | 0.48 | 11.4 | magic slider backend adopted (M4 bake-off vs qugiy/naive) |
+| 2026-07-27 | d6ac964 | 95.8 | 408.4 | 0.39 | 0.42 | 10.9 | M3 callback API (-cb ids) + bitboard drop filtering |
 <!-- BENCH_HISTORY_END -->

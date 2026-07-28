@@ -1,11 +1,18 @@
 //! Fully legal move generation.
 //!
-//! Correctness-first strategy (M1): generate pseudo-legal moves, then filter
+//! The primitive is [`Position::generate_moves`], which hands the caller one
+//! [`MoveSet`] per origin — destinations as bitboards — and can be stopped
+//! early. [`Position::legal_moves`] is the allocating wrapper over it.
+//!
+//! Legality strategy (still M1): generate pseudo-legal moves, then filter
 //! with an attack test on the adjusted occupancy. King safety, pins and
 //! discovered checks are all handled by the single [`attackers_to`] test;
 //! the test is skipped only when it provably cannot fail (not in check, not
 //! a king move, and the moving piece is not on a slider line to the king).
-//! Pawn-drop-mate (打ち歩詰め) is excluded by simulating the drop.
+//! Pawn-drop-mate (打ち歩詰め) is excluded by simulating the drop and asking
+//! whether the opponent has any reply at all.
+
+use core::ops::ControlFlow;
 
 use shogi_core::{Color, Hand, Move, Piece, PieceKind, Square};
 
@@ -13,22 +20,169 @@ use crate::bitboard::Bitboard;
 use crate::position::Position;
 use crate::tables;
 
+/// A group of legal moves that share an origin, as handed to
+/// [`Position::generate_moves`].
+///
+/// Destinations arrive as bitboards rather than one [`Move`] at a time, so
+/// a caller that only needs to count them (perft, mobility) never has to
+/// build a `Move` at all. A `MoveSet` is never empty.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MoveSet {
+    /// Board moves of `piece` standing on `from`.
+    ///
+    /// The two destination sets overlap wherever promotion is optional; a
+    /// square in `promotions` alone is a compulsory promotion, and one in
+    /// `non_promotions` alone cannot promote at all.
+    Normal {
+        piece: Piece,
+        from: Square,
+        promotions: Bitboard,
+        non_promotions: Bitboard,
+    },
+    /// Drops of `piece` from hand.
+    Drop { piece: Piece, to: Bitboard },
+}
+
+impl MoveSet {
+    /// How many [`Move`]s this set expands to.
+    #[inline(always)]
+    pub fn len(&self) -> usize {
+        match *self {
+            MoveSet::Normal {
+                promotions,
+                non_promotions,
+                ..
+            } => (promotions.count() + non_promotions.count()) as usize,
+            MoveSet::Drop { to, .. } => to.count() as usize,
+        }
+    }
+
+    /// Always `false`: generation never yields an empty set.
+    #[inline(always)]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
+
+/// Expands a [`MoveSet`] into individual [`Move`]s.
+#[derive(Clone, Debug)]
+pub struct MoveSetIter {
+    piece: Piece,
+    /// `None` for drops.
+    from: Option<Square>,
+    promotions: Bitboard,
+    others: Bitboard,
+}
+
+impl Iterator for MoveSetIter {
+    type Item = Move;
+
+    #[inline]
+    fn next(&mut self) -> Option<Move> {
+        match self.from {
+            Some(from) => {
+                if let Some(to) = self.promotions.pop() {
+                    return Some(Move::Normal {
+                        from,
+                        to,
+                        promote: true,
+                    });
+                }
+                self.others.pop().map(|to| Move::Normal {
+                    from,
+                    to,
+                    promote: false,
+                })
+            }
+            None => self.others.pop().map(|to| Move::Drop {
+                piece: self.piece,
+                to,
+            }),
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let count = (self.promotions.count() + self.others.count()) as usize;
+        (count, Some(count))
+    }
+}
+
+impl ExactSizeIterator for MoveSetIter {}
+
+impl IntoIterator for MoveSet {
+    type Item = Move;
+    type IntoIter = MoveSetIter;
+
+    fn into_iter(self) -> MoveSetIter {
+        match self {
+            MoveSet::Normal {
+                piece,
+                from,
+                promotions,
+                non_promotions,
+            } => MoveSetIter {
+                piece,
+                from: Some(from),
+                promotions,
+                others: non_promotions,
+            },
+            MoveSet::Drop { piece, to } => MoveSetIter {
+                piece,
+                from: None,
+                promotions: Bitboard::EMPTY,
+                others: to,
+            },
+        }
+    }
+}
+
 impl Position {
-    /// All legal moves for the side to move, including pawn-drop-mate
-    /// exclusion.
+    /// Calls `listener` with every group of legal moves for the side to
+    /// move, including pawn-drop-mate exclusion.
+    ///
+    /// Returning [`ControlFlow::Break`] from `listener` stops generation
+    /// early — useful to answer "is there any legal move?" without building
+    /// the rest — and is reported back as the return value, so the caller
+    /// can tell a full walk from an interrupted one. No empty [`MoveSet`]
+    /// is ever passed.
     ///
     /// The opponent's king square is never a destination: in illegal
     /// positions where that king could already be captured (unreachable
     /// through legal play, but constructible via [`Position::new`]), no
     /// king-capture move is generated — the rest of the result is
     /// unspecified there, but this function does not panic.
+    pub fn generate_moves(
+        &self,
+        listener: impl FnMut(MoveSet) -> ControlFlow<()>,
+    ) -> ControlFlow<()> {
+        generate_legal(self, listener)
+    }
+
+    /// All legal moves for the side to move.
     ///
-    /// A callback-style API is planned (M3); this allocating form will stay
-    /// as a compatibility wrapper.
+    /// The compatibility wrapper over [`Position::generate_moves`]; prefer
+    /// the callback form in hot code, which allocates nothing.
     pub fn legal_moves(&self) -> Vec<Move> {
         let mut moves = Vec::with_capacity(128);
-        generate_legal(self, &mut moves);
+        // The listener never breaks, so the walk is always `Continue`.
+        let _ = self.generate_moves(|set| {
+            // A plain push loop rather than `extend`: `MoveSetIter` is not
+            // `TrustedLen`, so `extend` re-checks the length bound per
+            // element and measurably loses on drop-heavy positions.
+            for mv in set {
+                moves.push(mv);
+            }
+            ControlFlow::Continue(())
+        });
         moves
+    }
+
+    /// Whether the side to move has at least one legal move.
+    ///
+    /// Stops at the first group found, so it is far cheaper than
+    /// `!legal_moves().is_empty()`.
+    pub fn has_legal_moves(&self) -> bool {
+        self.generate_moves(|_| ControlFlow::Break(())).is_break()
     }
 
     /// Whether the side to move is in check.
@@ -102,7 +256,10 @@ fn king_safe_after(
     attackers_to(position, king_after, occupied_after, us.flip(), enemy_mask).is_empty()
 }
 
-pub(crate) fn generate_legal(position: &Position, out: &mut Vec<Move>) {
+pub(crate) fn generate_legal(
+    position: &Position,
+    mut listener: impl FnMut(MoveSet) -> ControlFlow<()>,
+) -> ControlFlow<()> {
     let us = position.side_to_move();
     let them = us.flip();
     let occupied = position.occupied();
@@ -113,8 +270,44 @@ pub(crate) fn generate_legal(position: &Position, out: &mut Vec<Move>) {
         None => Bitboard::EMPTY,
     };
 
-    generate_normal(position, us, occupied, our, king, checkers, out);
-    generate_drops(position, us, occupied, king, checkers, out);
+    generate_normal(position, us, occupied, our, king, checkers, &mut listener)?;
+    generate_drops(position, us, occupied, king, checkers, &mut listener)
+}
+
+/// Splits the destinations of one piece into its promoting and
+/// non-promoting sets and hands them to `listener`.
+#[inline]
+fn emit_normal(
+    us: Color,
+    piece: Piece,
+    from: Square,
+    attacks: Bitboard,
+    listener: &mut impl FnMut(MoveSet) -> ControlFlow<()>,
+) -> ControlFlow<()> {
+    if attacks.is_empty() {
+        return ControlFlow::Continue(());
+    }
+    let piece_kind = piece.piece_kind();
+    let promotions = if piece_kind.promote().is_some() {
+        // Promotion is allowed when the move starts or ends in the zone,
+        // so leaving it covers every destination at once.
+        let zone = tables::promotion_zone(us);
+        if zone.contains(from) {
+            attacks
+        } else {
+            attacks & zone
+        }
+    } else {
+        Bitboard::EMPTY
+    };
+    // A piece that would have no move left must promote.
+    let non_promotions = attacks & !tables::forced_promotion_zone(us, piece_kind);
+    listener(MoveSet::Normal {
+        piece,
+        from,
+        promotions,
+        non_promotions,
+    })
 }
 
 fn generate_normal(
@@ -124,8 +317,8 @@ fn generate_normal(
     our: Bitboard,
     king: Option<Square>,
     checkers: Bitboard,
-    out: &mut Vec<Move>,
-) {
+    listener: &mut impl FnMut(MoveSet) -> ControlFlow<()>,
+) -> ControlFlow<()> {
     // Never target our own pieces, nor the opponent's king: the latter is
     // only reachable in illegal positions, and "capturing" it would try to
     // send a king to hand in do_move.
@@ -140,11 +333,9 @@ fn generate_normal(
             for from in our {
                 let piece = position.piece_at(from).unwrap();
                 let attacks = tables::attacks_of(piece, from, occupied) & targets;
-                for to in attacks {
-                    push_normal(us, piece.piece_kind(), from, to, out);
-                }
+                emit_normal(us, piece, from, attacks, listener)?;
             }
-            return;
+            return ControlFlow::Continue(());
         }
     };
     let in_check = !checkers.is_empty();
@@ -157,49 +348,19 @@ fn generate_normal(
         let piece = position.piece_at(from).unwrap();
         let is_king = from == king;
         let needs_test = in_check || is_king || pin_candidates.contains(from);
-        let attacks = tables::attacks_of(piece, from, occupied) & targets;
-        for to in attacks {
-            if needs_test && !king_safe_after(position, us, king, from, to, occupied) {
-                continue;
+        let mut attacks = tables::attacks_of(piece, from, occupied) & targets;
+        if needs_test {
+            let mut safe = Bitboard::EMPTY;
+            for to in attacks {
+                if king_safe_after(position, us, king, from, to, occupied) {
+                    safe |= Bitboard::single(to);
+                }
             }
-            push_normal(us, piece.piece_kind(), from, to, out);
+            attacks = safe;
         }
+        emit_normal(us, piece, from, attacks, listener)?;
     }
-}
-
-/// Pushes the promoting and/or non-promoting variants of a normal move,
-/// respecting forced promotions (pieces may never be left without a legal
-/// move).
-fn push_normal(us: Color, piece_kind: PieceKind, from: Square, to: Square, out: &mut Vec<Move>) {
-    let zone = 3;
-    let can_promote = matches!(
-        piece_kind,
-        PieceKind::Pawn
-            | PieceKind::Lance
-            | PieceKind::Knight
-            | PieceKind::Silver
-            | PieceKind::Bishop
-            | PieceKind::Rook
-    ) && (to.relative_rank(us) <= zone || from.relative_rank(us) <= zone);
-    if can_promote {
-        out.push(Move::Normal {
-            from,
-            to,
-            promote: true,
-        });
-    }
-    let must_promote = match piece_kind {
-        PieceKind::Pawn | PieceKind::Lance => to.relative_rank(us) == 1,
-        PieceKind::Knight => to.relative_rank(us) <= 2,
-        _ => false,
-    };
-    if !must_promote {
-        out.push(Move::Normal {
-            from,
-            to,
-            promote: false,
-        });
-    }
+    ControlFlow::Continue(())
 }
 
 fn generate_drops(
@@ -208,11 +369,11 @@ fn generate_drops(
     occupied: Bitboard,
     king: Option<Square>,
     checkers: Bitboard,
-    out: &mut Vec<Move>,
-) {
+    listener: &mut impl FnMut(MoveSet) -> ControlFlow<()>,
+) -> ControlFlow<()> {
     let hand = position.hand(us);
     if hand == Hand::new() {
-        return;
+        return ControlFlow::Continue(());
     }
     let targets = match checkers.count() {
         0 => !occupied,
@@ -224,49 +385,54 @@ fn generate_drops(
             let checker = checkers.next().unwrap();
             tables::between(king, checker) & !occupied
         }
-        _ => return,
+        _ => return ControlFlow::Continue(()),
     };
     if targets.is_empty() {
-        return;
+        return ControlFlow::Continue(());
     }
+    let has_pawn = hand.count(PieceKind::Pawn).unwrap_or(0) > 0;
     // Files that already contain one of our unpromoted pawns (nifu).
-    let our_pawns = position.piece_kind_bb(PieceKind::Pawn) & position.player_bb(us);
-    let mut pawn_files = Bitboard::EMPTY;
-    for file in 1..=9 {
-        let mask = Bitboard::file(file);
-        if !(our_pawns & mask).is_empty() {
-            pawn_files |= mask;
-        }
-    }
+    let pawn_files = if has_pawn {
+        let our_pawns = position.piece_kind_bb(PieceKind::Pawn) & position.player_bb(us);
+        (1..=9).fold(Bitboard::EMPTY, |files, file| {
+            let mask = Bitboard::file(file);
+            if (our_pawns & mask).is_empty() {
+                files
+            } else {
+                files | mask
+            }
+        })
+    } else {
+        Bitboard::EMPTY
+    };
     let enemy_king = position.king_square(us.flip());
     for piece_kind in Hand::all_hand_pieces() {
         if hand.count(piece_kind).unwrap_or(0) == 0 {
             continue;
         }
         let piece = Piece::new(piece_kind, us);
-        let mut targets = targets;
+        // A piece may not be dropped where it could never move again —
+        // exactly the squares that would force promotion for a board move.
+        let mut drops = targets & !tables::forced_promotion_zone(us, piece_kind);
         if piece_kind == PieceKind::Pawn {
-            targets &= !pawn_files;
+            drops &= !pawn_files;
+            // Only a pawn that gives check can be a pawn-drop mate, and by
+            // the reverse-lookup trick exactly one square does that, so the
+            // expensive simulation is reached at most once per position.
+            if let Some(enemy_king) = enemy_king {
+                let checking = drops & tables::pawn_attacks(us.flip(), enemy_king);
+                if let Some(to) = checking.into_iter().next()
+                    && is_pawn_drop_mate(position, piece, to)
+                {
+                    drops ^= Bitboard::single(to);
+                }
+            }
         }
-        // Ranks where the piece would never be able to move again.
-        let min_rank = match piece_kind {
-            PieceKind::Pawn | PieceKind::Lance => 2,
-            PieceKind::Knight => 3,
-            _ => 1,
-        };
-        for to in targets {
-            if to.relative_rank(us) < min_rank {
-                continue;
-            }
-            if piece_kind == PieceKind::Pawn
-                && enemy_king.is_some_and(|king| tables::pawn_attacks(us, to).contains(king))
-                && is_pawn_drop_mate(position, piece, to)
-            {
-                continue;
-            }
-            out.push(Move::Drop { piece, to });
+        if !drops.is_empty() {
+            listener(MoveSet::Drop { piece, to: drops })?;
         }
     }
+    ControlFlow::Continue(())
 }
 
 /// Whether dropping `piece` (a checking pawn) on `to` leaves the opponent
@@ -275,7 +441,7 @@ fn generate_drops(
 fn is_pawn_drop_mate(position: &Position, piece: Piece, to: Square) -> bool {
     let mut next = position.clone();
     next.do_move(Move::Drop { piece, to });
-    next.legal_moves().is_empty()
+    !next.has_legal_moves()
 }
 
 #[cfg(test)]
@@ -288,6 +454,131 @@ mod tests {
         let position = Position::startpos();
         assert_eq!(position.legal_moves().len(), 30);
         assert!(!position.in_check());
+    }
+
+    const CALLBACK_POSITIONS: &[&str] = &[
+        "startpos",
+        // Matsuri midgame position: heavy hands, many drops.
+        "l6nl/5+P1gk/2np1S3/p1p4Pp/3P2Sp1/1PPb2P1P/P5GS1/R8/LN4bKL w GR5pnsg 1",
+        // Max legal moves.
+        "R8/2K1S1SSk/4B4/9/9/9/9/9/1L1L1L3 b RBGSNLP3g3n17p 1",
+        // In check, so the evasion path is covered too.
+        "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1",
+    ];
+
+    fn position_of(sfen: &str) -> Position {
+        if sfen == "startpos" {
+            return Position::startpos();
+        }
+        let partial =
+            <PartialPosition as shogi_usi_parser::FromUsi>::from_usi(&format!("sfen {sfen}"))
+                .expect("test SFEN must parse");
+        Position::new(partial)
+    }
+
+    /// The set semantics the callback API promises: sets expand to exactly
+    /// `legal_moves()`, `len()` matches the expansion, and none is empty.
+    #[test]
+    fn move_sets_expand_to_legal_moves() {
+        for sfen in CALLBACK_POSITIONS {
+            let position = position_of(sfen);
+            let mut expanded = Vec::new();
+            let mut counted = 0;
+            let _ = position.generate_moves(|set| {
+                assert!(!set.is_empty(), "empty MoveSet in {sfen}");
+                assert_eq!(set.len(), set.into_iter().count(), "len mismatch in {sfen}");
+                counted += set.len();
+                expanded.extend(set);
+                ControlFlow::Continue(())
+            });
+            let mut expected = position.legal_moves();
+            assert_eq!(counted, expected.len(), "count mismatch in {sfen}");
+            expanded.sort_by_key(|&mv| move_key(mv));
+            expected.sort_by_key(|&mv| move_key(mv));
+            assert_eq!(expanded, expected, "move mismatch in {sfen}");
+        }
+    }
+
+    /// `promotions` / `non_promotions` must encode optional, compulsory and
+    /// impossible promotion correctly, which `Position::do_move` will only
+    /// accept if the piece really can promote.
+    #[test]
+    fn promotion_sets_are_consistent() {
+        for sfen in CALLBACK_POSITIONS {
+            let position = position_of(sfen);
+            let _ = position.generate_moves(|set| {
+                if let MoveSet::Normal {
+                    piece,
+                    promotions,
+                    non_promotions,
+                    ..
+                } = set
+                {
+                    if piece.piece_kind().promote().is_none() {
+                        assert!(promotions.is_empty(), "unpromotable piece with promotions");
+                    }
+                    // A compulsory promotion is one that never appears as a
+                    // non-promoting move.
+                    for to in promotions & !non_promotions {
+                        assert!(
+                            tables::forced_promotion_zone(piece.color(), piece.piece_kind())
+                                .contains(to)
+                        );
+                    }
+                }
+                ControlFlow::Continue(())
+            });
+        }
+    }
+
+    #[test]
+    fn early_exit_stops_generation() {
+        for sfen in CALLBACK_POSITIONS {
+            let position = position_of(sfen);
+            let mut seen = 0;
+            let flow = position.generate_moves(|_| {
+                seen += 1;
+                ControlFlow::Break(())
+            });
+            assert!(flow.is_break(), "early exit was not reported to the caller");
+            assert_eq!(seen, 1, "generation did not stop after the first set");
+            assert_eq!(
+                position.has_legal_moves(),
+                !position.legal_moves().is_empty()
+            );
+        }
+    }
+
+    /// A checkmated side has no legal moves and no move sets at all.
+    #[test]
+    fn has_legal_moves_is_false_when_mated() {
+        // Black king on 5i, mated by a gold on 5h backed by a rook on 5a.
+        // The gold covers every escape square, and taking it is illegal
+        // because the rook defends it down an otherwise empty file — so the
+        // white king has to stand well clear of file 5.
+        let mut partial = PartialPosition::empty();
+        for (file, rank, piece_kind, color) in [
+            (5, 9, PieceKind::King, Color::Black),
+            (5, 8, PieceKind::Gold, Color::White),
+            (5, 1, PieceKind::Rook, Color::White),
+            (1, 1, PieceKind::King, Color::White),
+        ] {
+            partial.piece_set(
+                Square::new(file, rank).unwrap(),
+                Some(Piece::new(piece_kind, color)),
+            );
+        }
+        let position = Position::new(partial);
+        assert!(position.in_check());
+        assert!(position.legal_moves().is_empty());
+        assert!(!position.has_legal_moves());
+    }
+
+    fn move_key(mv: Move) -> (u8, u8, u8, u8) {
+        match mv {
+            Move::Normal { from, to, promote } => (0, from.index(), to.index(), promote as u8),
+            Move::Drop { piece, to } => (1, piece.as_u8(), to.index(), 0),
+        }
     }
 
     #[test]
