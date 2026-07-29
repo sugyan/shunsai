@@ -15,8 +15,9 @@
 //! - under a single check, every non-king move is masked to capturing the
 //!   checker or interposing, and a double check leaves only king moves.
 //!
-//! Only the king itself still needs a per-destination attack test, because
-//! it is what the test is about.
+//! The king is what the test is about, so it is the one piece left, and it
+//! is decided by a single bitboard of every square the opponent attacks —
+//! see [`king_danger`] — rather than one attack test per destination.
 //!
 //! Pawn-drop-mate (打ち歩詰め) is excluded by simulating the drop and asking
 //! whether the opponent has any reply at all.
@@ -249,22 +250,6 @@ pub(crate) fn attackers_to(
     attackers & mask
 }
 
-/// Whether our king is safe after moving a piece from `from` to `to`
-/// (any capture on `to` no longer counts as an attacker).
-fn king_safe_after(
-    position: &Position,
-    us: Color,
-    king: Square,
-    from: Square,
-    to: Square,
-    occupied: Bitboard,
-) -> bool {
-    let king_after = if from == king { to } else { king };
-    let occupied_after = (occupied ^ Bitboard::single(from)) | Bitboard::single(to);
-    let enemy_mask = position.player_bb(us.flip()) & !Bitboard::single(to);
-    attackers_to(position, king_after, occupied_after, us.flip(), enemy_mask).is_empty()
-}
-
 pub(crate) fn generate_legal(
     position: &Position,
     mut listener: impl FnMut(MoveSet) -> ControlFlow<()>,
@@ -370,9 +355,8 @@ fn generate_normal(
     generate_king_moves(position, us, king, occupied, targets, listener)
 }
 
-/// King moves are the only ones that still need a per-destination attack
-/// test: the king itself is what the test is about, and it must not walk
-/// along a checking ray, which is why it is lifted out of `occupied`.
+/// The king is the one piece whose moves are not legal by construction, and
+/// [`king_danger`] decides all of them at once.
 fn generate_king_moves(
     position: &Position,
     us: Color,
@@ -381,14 +365,54 @@ fn generate_king_moves(
     targets: Bitboard,
     listener: &mut impl FnMut(MoveSet) -> ControlFlow<()>,
 ) -> ControlFlow<()> {
-    let piece = position.piece_at(king).expect("king square holds a king");
-    let mut safe = Bitboard::EMPTY;
-    for to in tables::king_attacks(king) & targets {
-        if king_safe_after(position, us, king, king, to, occupied) {
-            safe |= Bitboard::single(to);
-        }
+    let candidates = tables::king_attacks(king) & targets;
+    // A king boxed in by its own pieces is common enough to be worth the
+    // test, and the danger bitboard is built here rather than in
+    // `generate_legal` for the same reason: a walk that stops early — as
+    // `has_legal_moves` does, and with it the pawn-drop-mate test — usually
+    // finds its move in `generate_normal` and never pays for this at all.
+    if candidates.is_empty() {
+        return ControlFlow::Continue(());
     }
-    emit_normal(us, piece, king, safe, listener)
+    let piece = position.piece_at(king).expect("king square holds a king");
+    let danger = king_danger(position, us, king, occupied);
+    emit_normal(us, piece, king, candidates & !danger, listener)
+}
+
+/// Every square the opponent attacks, with our king lifted out of
+/// `occupied`.
+///
+/// One such bitboard decides every king destination at once, and is exactly
+/// equivalent to testing each destination on its own post-move occupancy,
+/// which is what generation used to do (up to eight `attackers_to` calls per
+/// node against this one pass over the opponent's pieces). Three properties
+/// make the destinations collapse into a single mask:
+///
+/// - lifting the king out of `occupied` is *required*, or the king could
+///   retreat along a checking ray while still blocking it with the body it
+///   is trying to save — but it does not depend on the destination, so it
+///   can be done once;
+/// - adding the destination to `occupied` cannot change whether that square
+///   is attacked, because a piece standing on a square only shortens rays
+///   *beyond* it, and what reaches the square depends on the pieces
+///   *between*;
+/// - removing a captured piece cannot change it either: no shogi piece
+///   attacks the square it stands on, so the piece being captured was never
+///   among that square's attackers. Its own attacks change, but those are
+///   about other squares.
+fn king_danger(position: &Position, us: Color, king: Square, occupied: Bitboard) -> Bitboard {
+    let occupied = occupied ^ Bitboard::single(king);
+    let mut danger = Bitboard::EMPTY;
+    // One dense pass over the opponent's pieces, in the shape of
+    // `generate_normal`'s main loop. Walking the 13 piece-kind bitboards
+    // instead was measured and rejected (DESIGN.md decision log).
+    for square in position.player_bb(us.flip()) {
+        let piece = position
+            .piece_at(square)
+            .expect("player_bb agrees with the mailbox");
+        danger |= tables::attacks_of(piece, square, occupied);
+    }
+    danger
 }
 
 /// Our pieces that stand alone between the king and an enemy slider, so

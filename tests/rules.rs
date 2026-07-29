@@ -172,14 +172,7 @@ fn king_cannot_retreat_along_a_checking_ray() {
     let position = Position::new(partial);
     assert!(position.in_check());
 
-    let king_destinations: Vec<Square> = position
-        .legal_moves()
-        .into_iter()
-        .filter_map(|mv| match mv {
-            Move::Normal { from, to, .. } if from == sq(5, 5) => Some(to),
-            _ => None,
-        })
-        .collect();
+    let king_destinations = king_destinations(&position, sq(5, 5));
     assert!(
         !king_destinations.contains(&sq(5, 6)),
         "king retreated along the rook's file and stayed in check"
@@ -188,4 +181,52 @@ fn king_cannot_retreat_along_a_checking_ray() {
         king_destinations.contains(&sq(4, 6)),
         "sideways escape must be legal"
     );
+}
+
+/// The king may not capture a piece that is defended — including when the
+/// defender is a slider whose ray *stops on* the captured piece. Removing
+/// the capture does not remove the attack on its square, which is why one
+/// danger bitboard can decide every destination without rebuilding
+/// occupancy per capture.
+#[test]
+fn king_cannot_capture_a_defended_attacker() {
+    // White pawn on 5e checks the black king on 5f, and a white rook on 5a
+    // defends the pawn down the otherwise empty file.
+    let sfen = "4r3k/9/9/9/4p4/4K4/9/9/9 b - 1";
+    let partial = PartialPosition::from_usi(&format!("sfen {sfen}")).unwrap();
+    let position = Position::new(partial);
+    assert!(position.in_check(), "the pawn on 5e must check the king");
+    assert!(
+        !king_destinations(&position, sq(5, 6)).contains(&sq(5, 5)),
+        "king captured a pawn defended by the rook behind it"
+    );
+}
+
+/// The mirror image: with nothing defending it, capturing the checking pawn
+/// is legal. Guards against a danger bitboard that is merely conservative —
+/// the piece being captured must not count as an attacker of its own square.
+#[test]
+fn king_may_capture_an_undefended_attacker() {
+    let sfen = "8k/9/9/9/4p4/4K4/9/9/9 b - 1";
+    let partial = PartialPosition::from_usi(&format!("sfen {sfen}")).unwrap();
+    let position = Position::new(partial);
+    assert!(position.in_check(), "the pawn on 5e must check the king");
+    assert!(
+        king_destinations(&position, sq(5, 6)).contains(&sq(5, 5)),
+        "king was not allowed to capture the undefended checking pawn"
+    );
+}
+
+/// The squares the king on `from` may legally move to.
+fn king_destinations(position: &Position, from: Square) -> Vec<Square> {
+    position
+        .legal_moves()
+        .into_iter()
+        .filter_map(|mv| match mv {
+            Move::Normal {
+                from: origin, to, ..
+            } if origin == from => Some(to),
+            _ => None,
+        })
+        .collect()
 }
