@@ -130,3 +130,62 @@ fn pinned_piece_moves_are_restricted() {
         assert_eq!(mv.to().file(), 5, "pinned gold left the pin line: {mv:?}");
     }
 }
+
+/// A pinned piece must not be allowed to capture the checker: doing so
+/// would still expose the king to the piece pinning it.
+#[test]
+fn pinned_piece_cannot_capture_a_different_checker() {
+    // Black king 5i pinned down file 5 by a white lance on 5a through the
+    // black gold on 5e; a white knight on 4g gives check from the side.
+    // G-4g would capture the checker but abandons the file.
+    let mut partial = PartialPosition::empty();
+    partial.piece_set(sq(5, 9), Some(Piece::new(PieceKind::King, Color::Black)));
+    partial.piece_set(sq(5, 5), Some(Piece::new(PieceKind::Gold, Color::Black)));
+    partial.piece_set(sq(5, 1), Some(Piece::new(PieceKind::Lance, Color::White)));
+    partial.piece_set(sq(4, 7), Some(Piece::new(PieceKind::Knight, Color::White)));
+    partial.piece_set(sq(1, 1), Some(Piece::new(PieceKind::King, Color::White)));
+    let position = Position::new(partial);
+    assert!(
+        position.in_check(),
+        "knight on 4g must check the king on 5i"
+    );
+
+    for mv in position.legal_moves() {
+        if let Move::Normal { from, to, .. } = mv {
+            assert!(
+                !(from == sq(5, 5) && to == sq(4, 7)),
+                "pinned gold captured the checker and exposed its king"
+            );
+        }
+    }
+}
+
+/// The king must not step backwards along a checking ray: the square behind
+/// it is still covered once the king stops blocking.
+#[test]
+fn king_cannot_retreat_along_a_checking_ray() {
+    // White rook on 5a checks the black king on 5e down the open file.
+    let mut partial = PartialPosition::empty();
+    partial.piece_set(sq(5, 5), Some(Piece::new(PieceKind::King, Color::Black)));
+    partial.piece_set(sq(5, 1), Some(Piece::new(PieceKind::Rook, Color::White)));
+    partial.piece_set(sq(1, 9), Some(Piece::new(PieceKind::King, Color::White)));
+    let position = Position::new(partial);
+    assert!(position.in_check());
+
+    let king_destinations: Vec<Square> = position
+        .legal_moves()
+        .into_iter()
+        .filter_map(|mv| match mv {
+            Move::Normal { from, to, .. } if from == sq(5, 5) => Some(to),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        !king_destinations.contains(&sq(5, 6)),
+        "king retreated along the rook's file and stayed in check"
+    );
+    assert!(
+        king_destinations.contains(&sq(4, 6)),
+        "sideways escape must be legal"
+    );
+}

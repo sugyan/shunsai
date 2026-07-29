@@ -83,6 +83,17 @@ taking a slice off the end and truncating back on the way out, allocated once
 outside the measured closure. The leaf path is the same bulk count in both,
 so the difference is purely internal-node collection.
 
+That difference measures as **nil**, and it is structurally tiny: bulk
+counting means only internal nodes allocate, which is 931 allocations for
+startpos-d4 and exactly 1 for maxmoves-d2. Note the durable form of that
+bound is the *count*, not a percentage — the share of runtime it can buy
+rises as the crate gets faster (~0.2 % on the M3 tree where these ids were
+introduced, ~0.5 % at this branch's speed), so quote the allocation counts
+rather than the percentage. The ids are kept as the standing evidence for
+that (see the 2026-07-29 decision-log entry in DESIGN.md, which retracts an
+earlier ad-hoc −7.4 %), and as the baseline a copy-make driver would have to
+beat.
+
 ## Bench-id stability contract
 
 History entries are keyed by criterion's `full_id` (`group/function[/value]`).
@@ -157,4 +168,5 @@ hand.
 | 2026-07-27 | e101841 | 56.3 | 213.1 | 0.79 | 0.88 | 10.9 | const-evaluated attack tables (LazyLock removed) - neutral, all deltas within noise |
 | 2026-07-27 | 8de28d8 | 97.7 | 326.9 | 0.52 | 0.48 | 11.4 | magic slider backend adopted (M4 bake-off vs qugiy/naive) |
 | 2026-07-27 | d6ac964 | 95.8 | 408.4 | 0.39 | 0.42 | 10.9 | M3 callback API (-cb ids) + bitboard drop filtering |
+| 2026-07-28 | abf8345 | 158.8 | 539.6 | 0.31 | 0.24 | 11.1 | pin-based legality: checkers + pinned computed once per node |
 <!-- BENCH_HISTORY_END -->

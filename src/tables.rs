@@ -138,9 +138,63 @@ pub(crate) fn diagonal_attacks(square: Square) -> Bitboard {
     DIAGONAL_ATTACKS[square.array_index()]
 }
 
+/// `LINE[a][b]`: every square of the rank, file or diagonal through `a` and
+/// `b`, both included and extended to the board edges; empty when they are
+/// not aligned (and on the diagonal, `LINE[a][a]`).
+///
+/// This is exactly where a piece pinned against its king may still move: a
+/// pin means the piece stands on such a line, and staying on it — including
+/// capturing the pinner — keeps the line blocked.
+static LINE: [[Bitboard; 81]; 81] = line_table();
+
+/// The four axes; walking each one both ways covers the whole line.
+const AXES: [(i8, i8); 4] = [(1, 0), (0, 1), (1, 1), (1, -1)];
+
+const fn line_table() -> [[Bitboard; 81]; 81] {
+    let mut table = [[Bitboard::EMPTY; 81]; 81];
+    let mut a = 0;
+    while a < 81 {
+        let mut axis = 0;
+        while axis < 4 {
+            let (file_delta, rank_delta) = AXES[axis];
+            let mut line = 1u128 << a;
+            let mut direction = 0;
+            while direction < 2 {
+                let sign: i8 = if direction == 0 { 1 } else { -1 };
+                let (mut file, mut rank) = (file_of(a), rank_of(a));
+                loop {
+                    file += sign * file_delta;
+                    rank += sign * rank_delta;
+                    if !on_board(file, rank) {
+                        break;
+                    }
+                    line |= 1 << index_of(file, rank);
+                }
+                direction += 1;
+            }
+            // Every other square of this line shares it.
+            let mut rest = line & !(1 << a);
+            while rest != 0 {
+                let b = rest.trailing_zeros() as usize;
+                table[a][b] = Bitboard::from_bits(line);
+                rest &= rest - 1;
+            }
+            axis += 1;
+        }
+        a += 1;
+    }
+    table
+}
+
 /// Squares strictly between `a` and `b` (empty when not aligned).
 pub(crate) fn between(a: Square, b: Square) -> Bitboard {
     BETWEEN[a.array_index()][b.array_index()]
+}
+
+/// The full line through `a` and `b` (empty when not aligned).
+#[inline(always)]
+pub(crate) fn line(a: Square, b: Square) -> Bitboard {
+    LINE[a.array_index()][b.array_index()]
 }
 
 /// Squares at relative rank `1..=max_relative_rank` for `color`, i.e. the
@@ -292,6 +346,67 @@ mod tests {
             }
         }
         assert_eq!(BETWEEN, *reference);
+    }
+
+    #[test]
+    fn const_line_table_matches_reference() {
+        let mut reference = Box::new([[Bitboard::EMPTY; 81]; 81]);
+        for from in Square::all() {
+            // One axis walked both ways is one full line through `from`.
+            for (file_delta, rank_delta) in AXES {
+                let mut line = Bitboard::single(from);
+                for sign in [1, -1] {
+                    let mut current = from;
+                    while let Some(next) = current.shift(sign * file_delta, sign * rank_delta) {
+                        line |= Bitboard::single(next);
+                        current = next;
+                    }
+                }
+                for to in line {
+                    if to != from {
+                        reference[from.array_index()][to.array_index()] = line;
+                    }
+                }
+            }
+        }
+        assert_eq!(LINE, *reference);
+    }
+
+    /// The properties `movegen` actually relies on when it masks a pinned
+    /// piece to `line(king, from)`: the mask must let it capture the pinner
+    /// and shuffle anywhere between, and must be empty for an unaligned pair
+    /// so a pin can never be inferred where there is no line.
+    #[test]
+    fn line_supports_the_pin_mask() {
+        for a in Square::all() {
+            assert!(line(a, a).is_empty(), "LINE[a][a] must be empty");
+            for b in Square::all() {
+                let aligned = a != b
+                    && (a.file() == b.file()
+                        || a.rank() == b.rank()
+                        || (a.file() as i8 - b.file() as i8).abs()
+                            == (a.rank() as i8 - b.rank() as i8).abs());
+                let line = line(a, b);
+                assert_eq!(aligned, !line.is_empty(), "alignment vs LINE: {a:?} {b:?}");
+                if !aligned {
+                    continue;
+                }
+                assert!(
+                    line.contains(a) && line.contains(b),
+                    "endpoints on the line"
+                );
+                assert_eq!(line, self::line(b, a), "LINE must be symmetric");
+                // A pinned piece on `b` may capture the pinner and occupy any
+                // square between, so both must survive the `& line(a, b)` mask.
+                assert_eq!(between(a, b) & !line, Bitboard::EMPTY, "between ⊆ line");
+                // Every square of the line describes the same line.
+                for c in line {
+                    if c != a {
+                        assert_eq!(self::line(a, c), line, "{a:?} {b:?} {c:?}");
+                    }
+                }
+            }
+        }
     }
 
     #[test]
