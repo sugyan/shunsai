@@ -61,8 +61,10 @@ fn main() {
         let start = Instant::now();
         let nodes = perft(&mut position, d);
         let elapsed = start.elapsed();
+        // Six decimals: shallow depths now finish in single-digit
+        // milliseconds, where three would quantize the result away.
         println!(
-            "perft({d}) = {nodes} ({:.3}s, {:.0} Mnps)",
+            "perft({d}) = {nodes} ({:.6}s, {:.0} Mnps)",
             elapsed.as_secs_f64(),
             nodes as f64 / elapsed.as_secs_f64() / 1_000_000.0,
         );
