@@ -83,6 +83,13 @@ taking a slice off the end and truncating back on the way out, allocated once
 outside the measured closure. The leaf path is the same bulk count in both,
 so the difference is purely internal-node collection.
 
+That difference measures as **nil**, and structurally cannot exceed ~0.2 %:
+bulk counting means only internal nodes allocate, which is 931 allocations
+for startpos-d4 and exactly 1 for maxmoves-d2. The ids are kept as the
+standing evidence for that (see the 2026-07-29 decision-log entry in
+DESIGN.md, which retracts an earlier ad-hoc −7.4 %), and as the baseline a
+copy-make driver would have to beat.
+
 ## Bench-id stability contract
 
 History entries are keyed by criterion's `full_id` (`group/function[/value]`).
