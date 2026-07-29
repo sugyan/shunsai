@@ -169,4 +169,5 @@ hand.
 | 2026-07-27 | 8de28d8 | 97.7 | 326.9 | 0.52 | 0.48 | 11.4 | magic slider backend adopted (M4 bake-off vs qugiy/naive) |
 | 2026-07-27 | d6ac964 | 95.8 | 408.4 | 0.39 | 0.42 | 10.9 | M3 callback API (-cb ids) + bitboard drop filtering |
 | 2026-07-28 | abf8345 | 158.8 | 539.6 | 0.31 | 0.24 | 11.1 | pin-based legality: checkers + pinned computed once per node |
+| 2026-07-29 | b94d7b1 | 160.9 | 546.5 | 0.30 | 0.24 | 10.8 | pawn-drop-mate simulation no longer clones Position; movegen allocates nothing |
 <!-- BENCH_HISTORY_END -->
