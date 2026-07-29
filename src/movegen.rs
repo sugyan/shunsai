@@ -379,8 +379,8 @@ fn generate_king_moves(
     emit_normal(us, piece, king, candidates & !danger, listener)
 }
 
-/// Every square the opponent attacks, with our king lifted out of
-/// `occupied`.
+/// The squares the opponent attacks *around our king*, with our king lifted
+/// out of `occupied`.
 ///
 /// One such bitboard decides every king destination at once, and is exactly
 /// equivalent to testing each destination on its own post-move occupancy,
@@ -400,13 +400,34 @@ fn generate_king_moves(
 ///   attacks the square it stands on, so the piece being captured was never
 ///   among that square's attackers. Its own attacks change, but those are
 ///   about other squares.
+///
+/// **The result is only valid on the king's own neighbours**, which is all
+/// [`generate_king_moves`] masks with. The whole set would have to come from
+/// every enemy piece, and one pass over all ~20 of them is a *fixed* cost
+/// where the test it replaces was paid per candidate square — at the initial
+/// position the king has three, and paying for twenty measured +15 % on
+/// `perft/startpos-cb/4`. Since only attacks landing next to the king can
+/// ever survive the mask, a piece that moves a fixed number of steps can be
+/// skipped outright unless it stands in [`tables::step_attacker_zone`];
+/// sliders reach from anywhere and are always included.
+///
+/// A search wanting the opponent's *full* attack map — DESIGN.md's
+/// 2026-07-29 entry names this function as where that would come from —
+/// wants this filter dropped, which is a one-line change and a different
+/// measurement. It is not dropped speculatively.
 fn king_danger(position: &Position, us: Color, king: Square, occupied: Bitboard) -> Bitboard {
     let occupied = occupied ^ Bitboard::single(king);
+    let sliders = position.piece_kind_bb(PieceKind::Lance)
+        | position.piece_kind_bb(PieceKind::Bishop)
+        | position.piece_kind_bb(PieceKind::Rook)
+        | position.piece_kind_bb(PieceKind::ProBishop)
+        | position.piece_kind_bb(PieceKind::ProRook);
+    let relevant = position.player_bb(us.flip()) & (tables::step_attacker_zone(king) | sliders);
     let mut danger = Bitboard::EMPTY;
-    // One dense pass over the opponent's pieces, in the shape of
+    // One dense pass with a mailbox lookup, in the shape of
     // `generate_normal`'s main loop. Walking the 13 piece-kind bitboards
     // instead was measured and rejected (DESIGN.md decision log).
-    for square in position.player_bb(us.flip()) {
+    for square in relevant {
         let piece = position
             .piece_at(square)
             .expect("player_bb agrees with the mailbox");

@@ -217,6 +217,30 @@ fn king_may_capture_an_undefended_attacker() {
     );
 }
 
+/// The furthest a non-slider can stand and still cover a king escape
+/// square: a knight two files and three ranks away, which is the exact
+/// corner of the box `king_danger` uses to skip distant pieces. One rank or
+/// file tighter and this escape would be generated.
+#[test]
+fn distant_knight_still_covers_a_king_escape() {
+    // Black king on 5e; white knight on 3b attacks 4d and 2d, and 4d is
+    // adjacent to the king.
+    let sfen = "9/6n2/9/9/4K4/9/9/9/k8 b - 1";
+    let partial = PartialPosition::from_usi(&format!("sfen {sfen}")).unwrap();
+    let position = Position::new(partial);
+    assert!(!position.in_check(), "the knight must not check the king");
+    let destinations = king_destinations(&position, sq(5, 5));
+    assert!(
+        !destinations.contains(&sq(4, 4)),
+        "king stepped onto 4d, which the knight on 3b covers"
+    );
+    // The mirror square is not covered, so the king really can move.
+    assert!(
+        destinations.contains(&sq(6, 4)),
+        "6d is uncovered and must stay legal"
+    );
+}
+
 /// The squares the king on `from` may legally move to.
 fn king_destinations(position: &Position, from: Square) -> Vec<Square> {
     position
