@@ -83,12 +83,16 @@ taking a slice off the end and truncating back on the way out, allocated once
 outside the measured closure. The leaf path is the same bulk count in both,
 so the difference is purely internal-node collection.
 
-That difference measures as **nil**, and structurally cannot exceed ~0.2 %:
-bulk counting means only internal nodes allocate, which is 931 allocations
-for startpos-d4 and exactly 1 for maxmoves-d2. The ids are kept as the
-standing evidence for that (see the 2026-07-29 decision-log entry in
-DESIGN.md, which retracts an earlier ad-hoc −7.4 %), and as the baseline a
-copy-make driver would have to beat.
+That difference measures as **nil**, and it is structurally tiny: bulk
+counting means only internal nodes allocate, which is 931 allocations for
+startpos-d4 and exactly 1 for maxmoves-d2. Note the durable form of that
+bound is the *count*, not a percentage — the share of runtime it can buy
+rises as the crate gets faster (~0.2 % on the M3 tree where these ids were
+introduced, ~0.5 % at this branch's speed), so quote the allocation counts
+rather than the percentage. The ids are kept as the standing evidence for
+that (see the 2026-07-29 decision-log entry in DESIGN.md, which retracts an
+earlier ad-hoc −7.4 %), and as the baseline a copy-make driver would have to
+beat.
 
 ## Bench-id stability contract
 
