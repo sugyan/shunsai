@@ -502,10 +502,12 @@ fn generate_drops(
 /// Whether dropping `piece` (a checking pawn) on `to` leaves the opponent
 /// with no legal moves. The pawn checks from an adjacent square, so the
 /// opponent cannot block and no recursive pawn-drop arises.
+///
+/// [`Position::with_drop`] rather than clone-and-`do_move`: the simulated
+/// position is thrown away, so it does not need an undo history, and
+/// carrying one made this the only allocating step in move generation.
 fn is_pawn_drop_mate(position: &Position, piece: Piece, to: Square) -> bool {
-    let mut next = position.clone();
-    next.do_move(Move::Drop { piece, to });
-    !next.has_legal_moves()
+    !position.with_drop(piece, to).has_legal_moves()
 }
 
 #[cfg(test)]
