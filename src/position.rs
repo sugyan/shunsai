@@ -204,6 +204,45 @@ impl Position {
         self.key = state.key;
     }
 
+    /// This position with `piece` dropped on `to`, as a fresh position with
+    /// no undo history. The drop must be legal apart from any pawn-drop-mate
+    /// rule.
+    ///
+    /// Exists so move generation can simulate a drop without allocating.
+    /// `self.clone()` deep-copies `states`, and the copy's capacity is then
+    /// exact, so `do_move`'s own `states.push` reallocates immediately —
+    /// two heap operations per simulated drop, which measurably dominated
+    /// pawn-drop-mate detection. Copying the position by value and starting
+    /// from an empty `Vec` allocates nothing.
+    ///
+    /// The result is a position, not a continuation: it is complete (board,
+    /// hands, key and ply all updated) but knows nothing of the moves that
+    /// led to it, so this drop cannot be undone on it.
+    pub(crate) fn with_drop(&self, piece: Piece, to: Square) -> Self {
+        // Every field except `states`, which is deliberately left empty.
+        // `position_after_drop_matches_do_move` holds this to `do_move`.
+        let mut next = Self {
+            board: self.board,
+            piece_bb: self.piece_bb,
+            color_bb: self.color_bb,
+            hands: self.hands,
+            side_to_move: self.side_to_move,
+            ply: self.ply,
+            kings: self.kings,
+            key: self.key,
+            states: Vec::new(),
+        };
+        let side = next.side_to_move;
+        debug_assert_eq!(piece.color(), side);
+        debug_assert!(next.piece_at(to).is_none());
+        next.remove_from_hand(side, piece.piece_kind());
+        next.put_piece(to, piece);
+        next.side_to_move = side.flip();
+        next.key ^= zobrist::side_key();
+        next.ply = next.ply.wrapping_add(1);
+        next
+    }
+
     fn put_piece(&mut self, square: Square, piece: Piece) {
         let (piece_kind, color) = piece.to_parts();
         debug_assert!(self.board[square.array_index()].is_none());
@@ -405,6 +444,81 @@ mod tests {
         }
         assert_eq!(a.key(), b.key());
         assert_ne!(a.key(), Position::startpos().key());
+    }
+
+    /// `with_drop` must reach exactly the position `do_move` reaches, for
+    /// every hand piece on every empty square it may legally occupy.
+    /// `PartialEq` compares every field except the undo history, so this
+    /// also catches a field added to `Position` and missed in `with_drop`.
+    #[test]
+    fn position_after_drop_matches_do_move() {
+        // Two positions with pieces of both colors in hand: a fresh game
+        // after a bishop exchange, and the max-moves position.
+        let mut exchanged = Position::startpos();
+        for m in [
+            mv((7, 7), (7, 6), false),
+            mv((3, 3), (3, 4), false),
+            mv((8, 8), (2, 2), true),
+            mv((3, 1), (2, 2), false),
+        ] {
+            exchanged.do_move(m);
+        }
+        let maxmoves = Position::new(
+            <PartialPosition as shogi_usi_parser::FromUsi>::from_usi(
+                "sfen R8/2K1S1SSk/4B4/9/9/9/9/9/1L1L1L3 b RBGSNLP3g3n17p 1",
+            )
+            .unwrap(),
+        );
+        let mut checked = 0;
+        for position in [exchanged, maxmoves] {
+            let side = position.side_to_move();
+            for piece_kind in Hand::all_hand_pieces() {
+                if position.hand(side).count(piece_kind).unwrap_or(0) == 0 {
+                    continue;
+                }
+                let piece = Piece::new(piece_kind, side);
+                for to in Square::all() {
+                    if position.piece_at(to).is_some() {
+                        continue;
+                    }
+                    // Skip only squares a drop could never occupy at all
+                    // (a piece with no move left); nifu and pawn-drop mate
+                    // do not affect the resulting position, so they need no
+                    // filtering here.
+                    if crate::tables::forced_promotion_zone(side, piece_kind).contains(to) {
+                        continue;
+                    }
+                    let mut expected = position.clone();
+                    expected.do_move(Move::Drop { piece, to });
+                    assert_eq!(
+                        position.with_drop(piece, to),
+                        expected,
+                        "with_drop disagrees for {piece:?} to {to:?}"
+                    );
+                    checked += 1;
+                }
+            }
+        }
+        assert!(checked > 100, "test covered only {checked} drops");
+    }
+
+    /// The simulated position carries no history, so it cannot undo the
+    /// drop — but it is otherwise a normal position and can be played on.
+    #[test]
+    fn with_drop_starts_a_fresh_history() {
+        let bishop = Piece::new(PieceKind::Bishop, Color::White);
+        let square = Square::new(5, 5).unwrap();
+        // White is to move after 7g7f, but has nothing in hand yet.
+        let mut with_hand = Position::startpos();
+        with_hand.do_move(mv((7, 7), (7, 6), false));
+        with_hand.add_to_hand(Color::White, PieceKind::Bishop);
+        let mut next = with_hand.with_drop(bishop, square);
+        assert_eq!(next.piece_at(square), Some(bishop));
+        assert_eq!(next.side_to_move(), Color::Black);
+        let advance = mv((2, 7), (2, 6), false);
+        next.do_move(advance);
+        next.undo_move(advance);
+        assert_eq!(next, with_hand.with_drop(bishop, square));
     }
 
     #[test]

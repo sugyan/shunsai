@@ -1,0 +1,6 @@
+# The magic multipliers are produced by `examples/gen_magics.rs`; CI verifies
+# they are reproducible (`cargo run --example gen_magics -- --check`).
+# Marked generated so review tools collapse it and it stays out of the
+# language statistics — but deliberately *not* `-diff`: the numbers being
+# visible in a diff is what lets the provenance claim be checked.
+src/sliders/magics.rs linguist-generated=true

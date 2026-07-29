@@ -6,6 +6,7 @@
 //! Leaves are bulk-counted at depth 1 (the cross-library comparison
 //! convention from DESIGN.md §4).
 
+use std::ops::ControlFlow;
 use std::time::Instant;
 
 use shogi_core::PartialPosition;
@@ -19,18 +20,18 @@ fn perft(position: &mut Position, depth: u32) -> u64 {
     if depth == 1 {
         // Bulk counting: the leaf parents never build a single `Move`.
         let mut nodes = 0;
-        position.generate_moves(|set| {
+        let _ = position.generate_moves(|set| {
             nodes += set.len() as u64;
-            false
+            ControlFlow::Continue(())
         });
         return nodes;
     }
     // Deeper nodes still need the moves themselves, and `do_move` cannot
     // run while the callback holds the position borrowed.
     let mut moves = Vec::with_capacity(128);
-    position.generate_moves(|set| {
+    let _ = position.generate_moves(|set| {
         moves.extend(set);
-        false
+        ControlFlow::Continue(())
     });
     let mut nodes = 0;
     for mv in moves {
