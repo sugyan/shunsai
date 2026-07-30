@@ -8,6 +8,14 @@ pub const MATSURI_SFEN: &str =
     "l6nl/5+P1gk/2np1S3/p1p4Pp/3P2Sp1/1PPb2P1P/P5GS1/R8/LN4bKL w GR5pnsg 1";
 pub const MAX_MOVES_SFEN: &str = "R8/2K1S1SSk/4B4/9/9/9/9/9/1L1L1L3 b RBGSNLP3g3n17p 1";
 
+/// Capacity for the single-position move buffer the `movegen/*-buf` ids own.
+///
+/// Comfortably above the 593 legal moves of `MAX_MOVES_SFEN`, so no measured
+/// closure ever grows its buffer — a growth realloc costs 41.6 ns on this
+/// machine and would show up as generation cost. The perft drivers thread one
+/// buffer through a whole tree and size it themselves.
+pub const MOVE_BUF_CAPACITY: usize = 1024;
+
 pub fn position(sfen: &str) -> Position {
     let partial = if sfen == "startpos" {
         PartialPosition::startpos()

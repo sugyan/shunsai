@@ -93,6 +93,47 @@ fn perft_cb_buf(position: &mut Position, depth: u32, buf: &mut Vec<Move>) -> u64
     nodes
 }
 
+/// The same tree again, but leaf parents obtain their count by
+/// **materializing** every legal move instead of popcounting the destination
+/// bitboards — which is what every engine in the cross-engine comparison does
+/// (YaneuraOu counts `MoveList<LEGAL_ALL>(pos).size()`, the apery driver
+/// `MoveList<LegalAll>`, yasai / rshogi / cshogi their legal-move lists).
+///
+/// This is the id whose numbers are comparable to theirs, and the gap to
+/// `-cb` is the size of the advantage `MoveSet::len()` buys on perft and only
+/// on perft: a search must have the moves. Mirrors the `--materialize` driver
+/// in `examples/perft.rs`, which is what the cross-engine harness runs.
+///
+/// The buffer is threaded through the whole tree and each ply truncates back
+/// on the way out, so like `perft_cb_buf` the walk allocates nothing — the
+/// other engines' leaf move lists are stack arrays.
+fn perft_mat(position: &mut Position, depth: u32, buf: &mut Vec<Move>) -> u64 {
+    if depth == 0 {
+        return 1;
+    }
+    let base = buf.len();
+    let _ = position.generate_moves(|set| {
+        buf.extend(set);
+        ControlFlow::Continue(())
+    });
+    if depth == 1 {
+        let nodes = (buf.len() - base) as u64;
+        buf.truncate(base);
+        return nodes;
+    }
+    let mut nodes = 0;
+    let mut i = base;
+    while i < buf.len() {
+        let mv = buf[i];
+        position.do_move(mv);
+        nodes += perft_mat(position, depth - 1, buf);
+        position.undo_move(mv);
+        i += 1;
+    }
+    buf.truncate(base);
+    nodes
+}
+
 fn bench_perft(c: &mut Criterion) {
     let mut group = c.benchmark_group("perft");
     group
@@ -107,11 +148,15 @@ fn bench_perft(c: &mut Criterion) {
     ] {
         let mut position = common::position(sfen);
         // Guard: the measured work is exactly the claimed node count, and
-        // all three drivers walk the same tree.
+        // all four drivers walk the same tree.
         assert_eq!(perft(&mut position, depth), nodes);
         assert_eq!(perft_cb(&mut position, depth), nodes);
         assert_eq!(
             perft_cb_buf(&mut position, depth, &mut Vec::with_capacity(4096)),
+            nodes
+        );
+        assert_eq!(
+            perft_mat(&mut position, depth, &mut Vec::with_capacity(4096)),
             nodes
         );
         group.throughput(Throughput::Elements(nodes));
@@ -131,6 +176,14 @@ fn bench_perft(c: &mut Criterion) {
                 // this id is that the tree walk itself never allocates.
                 let mut buf = Vec::with_capacity(4096);
                 b.iter(|| perft_cb_buf(&mut position, depth, &mut buf))
+            },
+        );
+        group.bench_with_input(
+            BenchmarkId::new(format!("{name}-mat"), depth),
+            &depth,
+            |b, &depth| {
+                let mut buf = Vec::with_capacity(4096);
+                b.iter(|| perft_mat(&mut position, depth, &mut buf))
             },
         );
     }

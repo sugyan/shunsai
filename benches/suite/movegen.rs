@@ -8,8 +8,16 @@
 //! The `-cb` variants sum `MoveSet::len()`, which is the callback API's
 //! reason to exist: no `Move` is ever materialized and nothing is
 //! allocated.
+//!
+//! The `-buf` variants materialize every move into a buffer allocated
+//! *outside* the measured closure. They exist because the two ids above
+//! differ in two things at once — whether a `Move` is built and whether the
+//! list is allocated — and only one of those is interesting: a search must
+//! have the moves, but it owns its own buffer. `-buf` minus `-cb` is the
+//! expansion loop, and the plain id minus `-buf` is the allocation.
 
 use criterion::{Criterion, Throughput, criterion_group};
+use shogi_core::Move;
 use shunsai::Position;
 use std::ops::ControlFlow;
 
@@ -25,6 +33,16 @@ fn count_moves(position: &Position) -> usize {
     total
 }
 
+/// Materializes every legal move into a caller-owned buffer.
+fn fill_moves(position: &Position, buf: &mut Vec<Move>) -> usize {
+    buf.clear();
+    let _ = position.generate_moves(|set| {
+        buf.extend(set);
+        ControlFlow::Continue(())
+    });
+    buf.len()
+}
+
 fn bench_movegen(c: &mut Criterion) {
     let mut group = c.benchmark_group("movegen");
 
@@ -35,8 +53,17 @@ fn bench_movegen(c: &mut Criterion) {
     ] {
         let position = common::position(sfen);
         assert_eq!(count_moves(&position), position.legal_moves().len());
+        assert_eq!(
+            fill_moves(&position, &mut Vec::new()),
+            position.legal_moves().len()
+        );
         group.bench_function(name, |b| b.iter(|| position.legal_moves()));
         group.bench_function(format!("{name}-cb"), |b| b.iter(|| count_moves(&position)));
+        group.bench_function(format!("{name}-buf"), |b| {
+            // Allocated once, outside the measured closure.
+            let mut buf = Vec::with_capacity(common::MOVE_BUF_CAPACITY);
+            b.iter(|| fill_moves(&position, &mut buf))
+        });
     }
 
     let sampled = common::sampled_positions();
@@ -65,6 +92,16 @@ fn bench_movegen(c: &mut Criterion) {
                 let mut total = 0;
                 for position in positions {
                     total += count_moves(position);
+                }
+                total
+            })
+        });
+        group.bench_function(format!("{name}-buf"), |b| {
+            let mut buf = Vec::with_capacity(common::MOVE_BUF_CAPACITY);
+            b.iter(|| {
+                let mut total = 0;
+                for position in positions {
+                    total += fill_moves(position, &mut buf);
                 }
                 total
             })

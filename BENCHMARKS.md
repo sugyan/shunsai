@@ -42,13 +42,16 @@ rustc, and criterion versions. The full suite takes roughly 3–5 minutes.
 | `perft/maxmoves/2` | perft(2) from the max-legal-moves position | Elements = 105,677 nodes |
 | `perft/{startpos,matsuri,maxmoves}-cb/<d>` | the same trees through the callback API | as above |
 | `perft/{startpos,matsuri,maxmoves}-cb-buf/<d>` | the same again, with one buffer reused for the whole tree instead of a `Vec` per internal node | as above |
+| `perft/{startpos,matsuri,maxmoves}-mat/<d>` | the same again, but leaf parents **materialize** every move into that buffer instead of popcounting — the convention the other engines use | as above |
 | `movegen/startpos` | one `legal_moves()` call | — |
 | `movegen/matsuri` | one `legal_moves()` call | — |
 | `movegen/maxmoves` | one `legal_moves()` call | — |
 | `movegen/{startpos,matsuri,maxmoves}-cb` | the same, counted through the callback API | — |
+| `movegen/{startpos,matsuri,maxmoves}-buf` | the same, materialized into a buffer allocated outside the measured closure | — |
 | `movegen/sampled-v1` | `legal_moves()` over all 40 sampled real-game positions | Elements = positions |
 | `movegen/sampled-v1-check` | same, restricted to the in-check subset (evasions) | Elements = positions |
 | `movegen/sampled-v1{,-check}-cb` | the same two sweeps through the callback API | Elements = positions |
+| `movegen/sampled-v1{,-check}-buf` | the same two sweeps, materialized into a reused buffer | Elements = positions |
 | `do_undo/games-v1` | `do_move` all + `undo_move` all over 4 real games | Elements = do+undo pairs |
 | `internals/bishop-attacks` | `bishop_attacks(sq, occ)`, 81 squares × 3 positions | Elements = calls |
 | `internals/rook-attacks` | `rook_attacks(sq, occ)`, same sweep | Elements = calls |
@@ -93,6 +96,22 @@ rather than the percentage. The ids are kept as the standing evidence for
 that (see the 2026-07-29 decision-log entry in DESIGN.md, which retracts an
 earlier ad-hoc −7.4 %), and as the baseline a copy-make driver would have to
 beat.
+
+The `-mat` and `-buf` ids separate two things the `-cb`-vs-plain pair had been
+conflating: whether a `Move` is **built** at all, and whether the list it goes
+into is **allocated**. `-cb` builds nothing and allocates only at internal
+nodes; the plain ids build every move *and* allocate per node; `-mat` / `-buf`
+build every move into a buffer the caller already owns. So `-buf` minus `-cb`
+is the `MoveSet` → `Move` expansion loop, and the plain id minus `-buf` is the
+allocation.
+
+They matter because **the count-only path is the one a search will not use**:
+a search needs the moves. It is also the reason the cross-engine table
+flatters shunsai — YaneuraOu, apery, apery_rust, yasai, rshogi and cshogi all
+count leaf moves by building them, so only haitaka is on the same footing.
+The `-mat` ids exist so the committed history tracks both conventions rather
+than one. See DESIGN.md §4 ("leaf bulk counting is two conventions") and the
+2026-07-30 entry under §6 M5.
 
 ## Bench-id stability contract
 
@@ -139,9 +158,45 @@ cargo run --release --example gen_bench_positions -- --csa-dir <download dir> --
 The generator validates every game move against `legal_moves()`, so a
 successful run doubles as a differential test on real games.
 
+## Quieting the machine first
+
+A history entry is only worth the machine state during it, and a
+plausible-looking number is not evidence that the machine was quiet — two
+entries in DESIGN.md's decision log were re-run for exactly this reason
+(σ = 46 % on `perft/matsuri/3` once; two whole suite runs discarded another
+time). On this development host the repeat offenders are known, so check them
+rather than rediscovering them:
+
+- **Microsoft Defender** — `wdavdaemon_unprivileged`, `wdavdaemon_enterprise`,
+  `wdavdaemon` and the `epsext` endpoint-security extension have been measured
+  at **~0.64 cores combined while idle**. It spikes for minutes after a new
+  binary appears, which is precisely when a bench run starts. It is
+  enterprise-managed and cannot be disabled locally, so the run has to be
+  gated on its CPU share instead.
+- **Zoom** — an active call moves every sub-microsecond id.
+- **Long-lived containers** — `docker ps` has shown otel-collector and jaeger
+  running for days.
+- **Uptime / memory pressure** — 26 days of uptime with 46 of 48 GiB used,
+  4.6 GiB compressed and ~900 MB swapped was the state during one discarded
+  run. A reboot is the single most effective step.
+- `sudo pmset -a powernap 0` — powernap can wake background work mid-run.
+
+Sample Defender's share **during** the run, not before it: an idle check at
+the start says nothing about the machine while the suite is executing.
+
+```bash
+ps -Ao %cpu,comm | awk '/wdav|epsext/ {s+=$1} END {print s"% Defender"}'
+```
+
+Acceptance for a recordable run: σ ≤ 4 % on every id, or — for the shortest
+`movegen/*` ids, where σ is demonstrably not a function of duration —
+agreement across three independent runs. Re-rolling until every id happens to
+pass σ selects for lucky runs; agreement between runs is the stronger
+evidence.
+
 ## Recording a history entry
 
-On a clean, committed tree:
+On a clean, committed tree, and a quiet machine (above):
 
 ```bash
 cargo bench --features bench-internals

@@ -33,11 +33,31 @@ MARKER_END = "<!-- BENCH_HISTORY_END -->"
 
 # ``(header, full_id, formatter)`` for the headline columns of the table.
 # Formatters get the per-result dict; missing ids render "-".
+#
+# The plain ids came first and are kept so the series runs unbroken back to the
+# M2 baseline, but they are the *allocating, materializing* path — not the one
+# the crate recommends, and not the one the cross-engine harness drives. So the
+# `-cb` (recommended) and `-mat` (comparable to the other engines) columns sit
+# beside them. Older entries render "-" for ids that did not exist yet.
+def _mnps(r: dict) -> str:
+    return f"{r['elements_per_sec'] / 1e6:.1f}"
+
+
+def _us_per_element(r: dict) -> str:
+    return f"{r['per_element_ns'] / 1e3:.2f}"
+
+
 HEADLINE_COLUMNS = [
-    ("perft startpos-d4 Mnps", "perft/startpos/4", lambda r: f"{r['elements_per_sec'] / 1e6:.1f}"),
-    ("perft matsuri-d3 Mnps", "perft/matsuri/3", lambda r: f"{r['elements_per_sec'] / 1e6:.1f}"),
+    ("startpos-d4 Mnps", "perft/startpos/4", _mnps),
+    ("startpos-d4 -cb", "perft/startpos-cb/4", _mnps),
+    ("startpos-d4 -mat", "perft/startpos-mat/4", _mnps),
+    ("matsuri-d3 Mnps", "perft/matsuri/3", _mnps),
+    ("matsuri-d3 -cb", "perft/matsuri-cb/3", _mnps),
+    ("matsuri-d3 -mat", "perft/matsuri-mat/3", _mnps),
     ("movegen matsuri µs", "movegen/matsuri", lambda r: f"{r['mean_ns'] / 1e3:.2f}"),
-    ("movegen sampled-v1 µs/pos", "movegen/sampled-v1", lambda r: f"{r['per_element_ns'] / 1e3:.2f}"),
+    ("sampled-v1 µs/pos", "movegen/sampled-v1", _us_per_element),
+    ("sampled-v1 -cb", "movegen/sampled-v1-cb", _us_per_element),
+    ("sampled-v1 -buf", "movegen/sampled-v1-buf", _us_per_element),
     ("do_undo ns/pair", "do_undo/games-v1", lambda r: f"{r['per_element_ns']:.1f}"),
 ]
 
