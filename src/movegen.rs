@@ -4,8 +4,8 @@
 //! [`MoveSet`] per origin — destinations as bitboards — and can be stopped
 //! early. [`Position::legal_moves`] is the allocating wrapper over it.
 //!
-//! Legality is decided per position rather than per move. Once per node the
-//! generator finds the [`checkers`](attackers_to) and the [`pinned_pieces`],
+//! Legality is decided per position rather than per move. Once per node
+//! [`check_info`] finds the checkers and the pinned pieces in a single scan,
 //! and those two bitboards make every non-king move legal by construction:
 //!
 //! - a piece that is not pinned cannot expose its own king by moving, since
@@ -255,17 +255,16 @@ pub(crate) fn generate_legal(
     mut listener: impl FnMut(MoveSet) -> ControlFlow<()>,
 ) -> ControlFlow<()> {
     let us = position.side_to_move();
-    let them = us.flip();
     let occupied = position.occupied();
     let our = position.player_bb(us);
     let king = position.king_square(us);
-    let checkers = match king {
-        Some(king) => attackers_to(position, king, occupied, them, position.player_bb(them)),
-        None => Bitboard::EMPTY,
+    let info = match king {
+        Some(king) => check_info(position, us, king, occupied),
+        None => CheckInfo::NONE,
     };
 
-    generate_normal(position, us, occupied, our, king, checkers, &mut listener)?;
-    generate_drops(position, us, occupied, king, checkers, &mut listener)
+    generate_normal(position, us, occupied, our, king, info, &mut listener)?;
+    generate_drops(position, us, occupied, king, info.checkers, &mut listener)
 }
 
 /// Splits the destinations of one piece into its promoting and
@@ -310,7 +309,7 @@ fn generate_normal(
     occupied: Bitboard,
     our: Bitboard,
     king: Option<Square>,
-    checkers: Bitboard,
+    info: CheckInfo,
     listener: &mut impl FnMut(MoveSet) -> ControlFlow<()>,
 ) -> ControlFlow<()> {
     // Never target our own pieces, nor the opponent's king: the latter is
@@ -333,20 +332,19 @@ fn generate_normal(
         }
     };
     // A double check can only be answered by moving the king.
-    if checkers.count() < 2 {
+    if info.checkers.count() < 2 {
         // Under a single check every other piece must capture the checker
         // or interpose; otherwise anything goes.
-        let check_mask = match checkers.into_iter().next() {
+        let check_mask = match info.checkers.into_iter().next() {
             Some(checker) => tables::between(king, checker) | Bitboard::single(checker),
             None => Bitboard::ALL,
         };
-        let pinned = pinned_pieces(position, us, king, occupied);
         for from in our & !Bitboard::single(king) {
             let piece = position.piece_at(from).unwrap();
             let mut attacks = tables::attacks_of(piece, from, occupied) & targets & check_mask;
             // A pinned piece may only travel along the line it is pinned
             // on, which includes capturing the pinner.
-            if pinned.contains(from) {
+            if info.pinned.contains(from) {
                 attacks &= tables::line(king, from);
             }
             emit_normal(us, piece, from, attacks, listener)?;
@@ -436,14 +434,45 @@ fn king_danger(position: &Position, us: Color, king: Square, occupied: Bitboard)
     danger
 }
 
-/// Our pieces that stand alone between the king and an enemy slider, so
-/// moving them off that line would expose the king.
+/// What one scan around the king establishes about legality: which enemy
+/// pieces check it, and which of ours are pinned against it.
+#[derive(Clone, Copy)]
+struct CheckInfo {
+    checkers: Bitboard,
+    pinned: Bitboard,
+}
+
+impl CheckInfo {
+    /// For a side with no king on the board: nothing to check, nothing to pin.
+    const NONE: Self = Self {
+        checkers: Bitboard::EMPTY,
+        pinned: Bitboard::EMPTY,
+    };
+}
+
+/// The enemy pieces checking our king, and our pieces pinned against it.
 ///
-/// Snipers are found by asking which enemy sliders would reach the king on
-/// an *empty* board, then counting the blockers in between. A dragon's or
-/// horse's one-step sidesteps can never pin — nothing fits between them and
-/// the king — so only the true slider lines are searched.
-fn pinned_pieces(position: &Position, us: Color, king: Square, occupied: Bitboard) -> Bitboard {
+/// Both come out of one scan, because for a slider they are the same
+/// question asked at different blocker counts. Snipers are the enemy sliders
+/// that would reach the king on an *empty* board; for each, count what
+/// actually stands between:
+///
+/// - **nothing** — the slider reaches the king, so it is a checker;
+/// - **exactly one piece** — that piece is what keeps the ray off the king,
+///   so moving it off the line would expose it: a pin;
+/// - **two or more** — neither, and moving one still leaves the other.
+///
+/// Computing them separately meant asking the same three slider tables twice
+/// per node, once against the real occupancy for the checkers and once
+/// against an empty board for the pins. The empty-board pass subsumes the
+/// other: a slider on `s` attacks the king through `occupied` exactly when
+/// `s` is on a slider line from the king *and* `between(king, s)` is clear,
+/// which is the zero-blocker case above.
+///
+/// A dragon's or horse's one-step sidesteps can never pin — nothing fits
+/// between them and the king — so they are left to the step lookups below,
+/// while their sliding halves ride along in `rooks` and `bishops`.
+fn check_info(position: &Position, us: Color, king: Square, occupied: Bitboard) -> CheckInfo {
     let their = position.player_bb(us.flip());
     let rooks = (position.piece_kind_bb(PieceKind::Rook)
         | position.piece_kind_bb(PieceKind::ProRook))
@@ -460,16 +489,42 @@ fn pinned_pieces(position: &Position, us: Color, king: Square, occupied: Bitboar
         // are the ones our own lance would attack from the king.
         | (tables::lance_attacks(us, king, empty) & lances);
 
+    let mut checkers = Bitboard::EMPTY;
     let mut pinned = Bitboard::EMPTY;
     for sniper in snipers {
         let blockers = tables::between(king, sniper) & occupied;
-        if blockers.count() == 1 {
-            pinned |= blockers;
+        match blockers.count() {
+            0 => checkers |= Bitboard::single(sniper),
+            1 => pinned |= blockers,
+            _ => {}
         }
     }
-    // Only our own pieces are pinned; one of theirs in the way is their
-    // discovered-check opportunity, not our problem.
-    pinned & position.player_bb(us)
+
+    // Every remaining checker moves a fixed number of steps, so the reverse
+    // lookup of `attackers_to` is a plain table intersection — no occupancy
+    // involved, and nothing here can pin.
+    let golds = position.piece_kind_bb(PieceKind::Gold)
+        | position.piece_kind_bb(PieceKind::ProPawn)
+        | position.piece_kind_bb(PieceKind::ProLance)
+        | position.piece_kind_bb(PieceKind::ProKnight)
+        | position.piece_kind_bb(PieceKind::ProSilver);
+    let mut steps = tables::pawn_attacks(us, king) & position.piece_kind_bb(PieceKind::Pawn);
+    steps |= tables::knight_attacks(us, king) & position.piece_kind_bb(PieceKind::Knight);
+    steps |= tables::silver_attacks(us, king) & position.piece_kind_bb(PieceKind::Silver);
+    steps |= tables::gold_attacks(us, king) & golds;
+    steps |= tables::orthogonal_attacks(king) & position.piece_kind_bb(PieceKind::ProBishop);
+    steps |= tables::diagonal_attacks(king) & position.piece_kind_bb(PieceKind::ProRook);
+    // Two kings cannot legally stand adjacent, but `Position::new` can build
+    // it; kept so `checkers` agrees with `in_check` there.
+    steps |= tables::king_attacks(king) & position.piece_kind_bb(PieceKind::King);
+    checkers |= steps & their;
+
+    CheckInfo {
+        checkers,
+        // Only our own pieces are pinned; one of theirs in the way is their
+        // discovered-check opportunity, not our problem.
+        pinned: pinned & position.player_bb(us),
+    }
 }
 
 fn generate_drops(
@@ -683,6 +738,44 @@ mod tests {
         assert!(position.in_check());
         assert!(position.legal_moves().is_empty());
         assert!(!position.has_legal_moves());
+    }
+
+    /// `check_info` folds the slider half of the checker search into the pin
+    /// scan, so its `checkers` must stay exactly what the general
+    /// `attackers_to` reverse lookup reports. Held over every position two
+    /// plies deep from each fixture — tens of thousands of nodes, including
+    /// checks, double checks and pins.
+    #[test]
+    fn check_info_agrees_with_attackers_to() {
+        fn walk(position: &mut Position, depth: u32, nodes: &mut u64) {
+            let us = position.side_to_move();
+            if let Some(king) = position.king_square(us) {
+                let occupied = position.occupied();
+                let them = us.flip();
+                let expected =
+                    attackers_to(position, king, occupied, them, position.player_bb(them));
+                let info = check_info(position, us, king, occupied);
+                assert_eq!(
+                    info.checkers, expected,
+                    "checkers disagree in\n{position:?}"
+                );
+                *nodes += 1;
+            }
+            if depth == 0 {
+                return;
+            }
+            for mv in position.legal_moves() {
+                position.do_move(mv);
+                walk(position, depth - 1, nodes);
+                position.undo_move(mv);
+            }
+        }
+        let mut nodes = 0;
+        for sfen in CALLBACK_POSITIONS {
+            let mut position = position_of(sfen);
+            walk(&mut position, 2, &mut nodes);
+        }
+        assert!(nodes > 10_000, "test covered only {nodes} nodes");
     }
 
     fn move_key(mv: Move) -> (u8, u8, u8, u8) {
