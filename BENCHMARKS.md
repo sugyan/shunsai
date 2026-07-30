@@ -170,4 +170,5 @@ hand.
 | 2026-07-27 | d6ac964 | 95.8 | 408.4 | 0.39 | 0.42 | 10.9 | M3 callback API (-cb ids) + bitboard drop filtering |
 | 2026-07-28 | abf8345 | 158.8 | 539.6 | 0.31 | 0.24 | 11.1 | pin-based legality: checkers + pinned computed once per node |
 | 2026-07-29 | b94d7b1 | 160.9 | 546.5 | 0.30 | 0.24 | 10.8 | pawn-drop-mate simulation no longer clones Position; movegen allocates nothing |
+| 2026-07-30 | 97e28b2 | 184.4 | 556.9 | 0.29 | 0.20 | 10.8 | king danger bitboard (one per node, filtered to the king's neighbourhood) + checkers/pins fused into one scan; movegen/maxmoves-cb at sigma 5.7%, mean corroborated by 3 runs |
 <!-- BENCH_HISTORY_END -->

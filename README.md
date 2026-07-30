@@ -4,7 +4,7 @@
 
 `shunsai` is a Rust library for high-speed generation of legal moves in [Shogi](https://en.wikipedia.org/wiki/Shogi). It is the successor to [`sugyan/yasai`](https://github.com/sugyan/yasai) ("Yet Another Shogi library, for AI"), redesigned from the inside out to be one of the fastest shogi move generators in Rust.
 
-> ⚠️ **Status: M4 largely done; M5 partly met.** Fully legal move generation (including pawn-drop-mate exclusion), validated against known perft values and differential-tested against `shogi_legality_lite`. Magic slider attacks, callback move generation, pin-based legality, an allocation-free pawn-drop-mate test and a king-danger bitboard have each been adopted by measurement against the committed benchmark history (see [BENCHMARKS.md](./BENCHMARKS.md)). apery_rust, apery and the old yasai are beaten on every fixed position; [haitaka](https://github.com/tofutofu/haitaka) led by 1.1–1.3× when the engines were last measured side by side, which was before the king-danger change. See [DESIGN.md](./DESIGN.md).
+> ⚠️ **Status: M4 largely done; M5 mostly met.** Fully legal move generation (including pawn-drop-mate exclusion), validated against known perft values and differential-tested against `shogi_legality_lite`. Magic slider attacks, callback move generation, pin-based legality, an allocation-free pawn-drop-mate test and a king-danger bitboard have each been adopted by measurement against the committed benchmark history (see [BENCHMARKS.md](./BENCHMARKS.md)). apery_rust, apery, YaneuraOu and the old yasai are beaten on every fixed position; against [haitaka](https://github.com/tofutofu/haitaka) it is one position won (max-moves, 1.67×) and two level within noise. See [DESIGN.md](./DESIGN.md).
 
 ## Concept
 
