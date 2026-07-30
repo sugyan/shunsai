@@ -17,7 +17,7 @@
       "games-v1",
       "sampled-v1"
     ],
-    "note": "king danger bitboard (one per node, filtered to the king's neighbourhood) + checkers/pins fused into one scan; movegen/maxmoves-cb at sigma 5.7%, mean corroborated by 3 runs"
+    "note": "king danger bitboard (one per node, filtered to the king's neighbourhood) + checkers/pins fused into one scan; movegen/maxmoves-cb at sigma 5.7%; recorded on 3-run agreement (reported time 101.94/101.11/100.84 ns), not on duration"
   },
   "results": {
     "do_undo/games-v1": {

@@ -241,6 +241,39 @@ fn distant_knight_still_covers_a_king_escape() {
     );
 }
 
+/// A double check can only be answered by moving the king — capturing one
+/// checker leaves the other. Both checkers here are *sliders*, which is the
+/// case where the checker search has to accumulate: with one sniper the
+/// distinction between collecting and overwriting is invisible.
+#[test]
+fn double_check_by_two_sliders_leaves_only_king_moves() {
+    // Black king on 5e, checked down file 5 by a white rook on 5b and along
+    // the diagonal by a white bishop on 3c. The black gold on 2d attacks 3c,
+    // so capturing a checker looks available and must not be generated.
+    let sfen = "8k/4r4/6b2/7G1/4K4/9/9/9/9 b - 1";
+    let partial = PartialPosition::from_usi(&format!("sfen {sfen}")).unwrap();
+    let position = Position::new(partial);
+    assert!(position.in_check());
+
+    let moves = position.legal_moves();
+    for mv in &moves {
+        assert_eq!(
+            mv.from(),
+            Some(sq(5, 5)),
+            "non-king move generated under double check: {mv:?}"
+        );
+    }
+    let mut destinations = king_destinations(&position, sq(5, 5));
+    destinations.sort_by_key(|s| (s.file(), s.rank()));
+    // 5d/5f stay on the rook's file and 4d/6f on the bishop's diagonal, both
+    // of which still cover those squares once the king stops blocking.
+    assert_eq!(
+        destinations,
+        vec![sq(4, 5), sq(4, 6), sq(6, 4), sq(6, 5)],
+        "wrong escape set under double check"
+    );
+}
+
 /// The squares the king on `from` may legally move to.
 fn king_destinations(position: &Position, from: Square) -> Vec<Square> {
     position

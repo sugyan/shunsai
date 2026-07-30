@@ -629,8 +629,23 @@ mod tests {
         "l6nl/5+P1gk/2np1S3/p1p4Pp/3P2Sp1/1PPb2P1P/P5GS1/R8/LN4bKL w GR5pnsg 1",
         // Max legal moves.
         "R8/2K1S1SSk/4B4/9/9/9/9/9/1L1L1L3 b RBGSNLP3g3n17p 1",
-        // In check, so the evasion path is covered too.
-        "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1",
+        // In check: a real game position (from the sampled-v1 fixture) where
+        // a bishop on 7g checks the king on 5i, so the evasion path is
+        // covered. This entry used to be a byte-for-byte copy of startpos
+        // under a comment claiming it was in check.
+        "lnsgk2nl/1r4gs1/p1pppp1pp/6p2/1p5P1/2P6/PPbPPPP1P/2G2G1R1/LNS1K1SNL b b 15",
+        // Double check by two *sliders* — a rook on 5b down the file and a
+        // bishop on 3c along the diagonal, both reaching the king on 5e. The
+        // only legal replies are the four king moves; the gold on 2d may not
+        // capture the bishop. Nothing else here reaches `checkers.count() >= 2`
+        // with more than one sniper, which is the case `check_info` ORs
+        // together rather than assigns.
+        "8k/4r4/6b2/7G1/4K4/9/9/9/9 b - 1",
+        // Two pins at once, and not in check: the gold on 5d is pinned down
+        // the file by the rook on 5a, the silver on 4d along the diagonal by
+        // the bishop on 2b. The other half of `check_info` accumulates too,
+        // and one sniper cannot tell that apart either.
+        "4r4/7b1/9/4GS3/4K4/9/9/9/8k b - 1",
     ];
 
     fn position_of(sfen: &str) -> Position {
@@ -741,14 +756,55 @@ mod tests {
         assert!(!position.has_legal_moves());
     }
 
+    /// The pin scan as it stood before `check_info` fused the checker search
+    /// into it — kept as a test-only oracle, the way `sliders::naive` is kept
+    /// for the slider backends.
+    fn pinned_pieces_reference(
+        position: &Position,
+        us: Color,
+        king: Square,
+        occupied: Bitboard,
+    ) -> Bitboard {
+        let their = position.player_bb(us.flip());
+        let rooks = (position.piece_kind_bb(PieceKind::Rook)
+            | position.piece_kind_bb(PieceKind::ProRook))
+            & their;
+        let bishops = (position.piece_kind_bb(PieceKind::Bishop)
+            | position.piece_kind_bb(PieceKind::ProBishop))
+            & their;
+        let lances = position.piece_kind_bb(PieceKind::Lance) & their;
+        let empty = Bitboard::EMPTY;
+        let snipers = (tables::rook_attacks(king, empty) & rooks)
+            | (tables::bishop_attacks(king, empty) & bishops)
+            | (tables::lance_attacks(us, king, empty) & lances);
+        let mut pinned = Bitboard::EMPTY;
+        for sniper in snipers {
+            let blockers = tables::between(king, sniper) & occupied;
+            if blockers.count() == 1 {
+                pinned |= blockers;
+            }
+        }
+        pinned & position.player_bb(us)
+    }
+
     /// `check_info` folds the slider half of the checker search into the pin
-    /// scan, so its `checkers` must stay exactly what the general
-    /// `attackers_to` reverse lookup reports. Held over every position two
-    /// plies deep from each fixture — tens of thousands of nodes, including
-    /// checks, double checks and pins.
+    /// scan, so *both* halves must stay exactly what the code it replaced
+    /// reported: `checkers` against the general `attackers_to` reverse
+    /// lookup, and `pinned` against the old standalone scan. Held over every
+    /// position two plies deep from each fixture — tens of thousands of
+    /// nodes, including single checks, a slider double check, and pins.
     #[test]
     fn check_info_agrees_with_attackers_to() {
-        fn walk(position: &mut Position, depth: u32, nodes: &mut u64) {
+        /// `doubles` / `double_pins` count the configurations that make the
+        /// sniper loop's two `|=` meaningful: more than one checker, and more
+        /// than one sniper pinning.
+        fn walk(
+            position: &mut Position,
+            depth: u32,
+            nodes: &mut u64,
+            doubles: &mut u64,
+            double_pins: &mut u64,
+        ) {
             let us = position.side_to_move();
             if let Some(king) = position.king_square(us) {
                 let occupied = position.occupied();
@@ -760,6 +816,17 @@ mod tests {
                     info.checkers, expected,
                     "checkers disagree in\n{position:?}"
                 );
+                assert_eq!(
+                    info.pinned,
+                    pinned_pieces_reference(position, us, king, occupied),
+                    "pinned disagrees in\n{position:?}"
+                );
+                if info.checkers.count() >= 2 {
+                    *doubles += 1;
+                }
+                if info.pinned.count() >= 2 {
+                    *double_pins += 1;
+                }
                 *nodes += 1;
             }
             if depth == 0 {
@@ -767,16 +834,24 @@ mod tests {
             }
             for mv in position.legal_moves() {
                 position.do_move(mv);
-                walk(position, depth - 1, nodes);
+                walk(position, depth - 1, nodes, doubles, double_pins);
                 position.undo_move(mv);
             }
         }
         let mut nodes = 0;
+        let mut doubles = 0;
+        let mut double_pins = 0;
         for sfen in CALLBACK_POSITIONS {
             let mut position = position_of(sfen);
-            walk(&mut position, 2, &mut nodes);
+            walk(&mut position, 2, &mut nodes, &mut doubles, &mut double_pins);
         }
         assert!(nodes > 10_000, "test covered only {nodes} nodes");
+        // Both accumulations in the sniper loop need more than one sniper to
+        // be distinguishable from a plain assignment, and neither case occurs
+        // by accident: before these fixtures existed, turning either `|=`
+        // into `=` passed the whole suite including the deep perft values.
+        assert!(doubles > 0, "no double check reached; the OR is untested");
+        assert!(double_pins > 0, "no double pin reached; the OR is untested");
     }
 
     fn move_key(mv: Move) -> (u8, u8, u8, u8) {
