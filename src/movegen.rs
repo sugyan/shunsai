@@ -16,8 +16,9 @@
 //!   checker or interposing, and a double check leaves only king moves.
 //!
 //! The king is what the test is about, so it is the one piece left, and it
-//! is decided by a single bitboard of every square the opponent attacks —
-//! see [`king_danger`] — rather than one attack test per destination.
+//! is decided by a single bitboard of the squares the opponent attacks
+//! *around it* — see [`king_danger`], which is deliberately a partial attack
+//! map — rather than one attack test per destination.
 //!
 //! Pawn-drop-mate (打ち歩詰め) is excluded by simulating the drop and asking
 //! whether the opponent has any reply at all.
