@@ -172,14 +172,7 @@ fn king_cannot_retreat_along_a_checking_ray() {
     let position = Position::new(partial);
     assert!(position.in_check());
 
-    let king_destinations: Vec<Square> = position
-        .legal_moves()
-        .into_iter()
-        .filter_map(|mv| match mv {
-            Move::Normal { from, to, .. } if from == sq(5, 5) => Some(to),
-            _ => None,
-        })
-        .collect();
+    let king_destinations = king_destinations(&position, sq(5, 5));
     assert!(
         !king_destinations.contains(&sq(5, 6)),
         "king retreated along the rook's file and stayed in check"
@@ -188,4 +181,109 @@ fn king_cannot_retreat_along_a_checking_ray() {
         king_destinations.contains(&sq(4, 6)),
         "sideways escape must be legal"
     );
+}
+
+/// The king may not capture a piece that is defended — including when the
+/// defender is a slider whose ray *stops on* the captured piece. Removing
+/// the capture does not remove the attack on its square, which is why one
+/// danger bitboard can decide every destination without rebuilding
+/// occupancy per capture.
+#[test]
+fn king_cannot_capture_a_defended_attacker() {
+    // White pawn on 5e checks the black king on 5f, and a white rook on 5a
+    // defends the pawn down the otherwise empty file.
+    let sfen = "4r3k/9/9/9/4p4/4K4/9/9/9 b - 1";
+    let partial = PartialPosition::from_usi(&format!("sfen {sfen}")).unwrap();
+    let position = Position::new(partial);
+    assert!(position.in_check(), "the pawn on 5e must check the king");
+    assert!(
+        !king_destinations(&position, sq(5, 6)).contains(&sq(5, 5)),
+        "king captured a pawn defended by the rook behind it"
+    );
+}
+
+/// The mirror image: with nothing defending it, capturing the checking pawn
+/// is legal. Guards against a danger bitboard that is merely conservative —
+/// the piece being captured must not count as an attacker of its own square.
+#[test]
+fn king_may_capture_an_undefended_attacker() {
+    let sfen = "8k/9/9/9/4p4/4K4/9/9/9 b - 1";
+    let partial = PartialPosition::from_usi(&format!("sfen {sfen}")).unwrap();
+    let position = Position::new(partial);
+    assert!(position.in_check(), "the pawn on 5e must check the king");
+    assert!(
+        king_destinations(&position, sq(5, 6)).contains(&sq(5, 5)),
+        "king was not allowed to capture the undefended checking pawn"
+    );
+}
+
+/// The furthest a non-slider can stand and still cover a king escape
+/// square: a knight two files and three ranks away, which is the exact
+/// corner of the box `king_danger` uses to skip distant pieces. One rank or
+/// file tighter and this escape would be generated.
+#[test]
+fn distant_knight_still_covers_a_king_escape() {
+    // Black king on 5e; white knight on 3b attacks 4d and 2d, and 4d is
+    // adjacent to the king.
+    let sfen = "9/6n2/9/9/4K4/9/9/9/k8 b - 1";
+    let partial = PartialPosition::from_usi(&format!("sfen {sfen}")).unwrap();
+    let position = Position::new(partial);
+    assert!(!position.in_check(), "the knight must not check the king");
+    let destinations = king_destinations(&position, sq(5, 5));
+    assert!(
+        !destinations.contains(&sq(4, 4)),
+        "king stepped onto 4d, which the knight on 3b covers"
+    );
+    // The mirror square is not covered, so the king really can move.
+    assert!(
+        destinations.contains(&sq(6, 4)),
+        "6d is uncovered and must stay legal"
+    );
+}
+
+/// A double check can only be answered by moving the king — capturing one
+/// checker leaves the other. Both checkers here are *sliders*, which is the
+/// case where the checker search has to accumulate: with one sniper the
+/// distinction between collecting and overwriting is invisible.
+#[test]
+fn double_check_by_two_sliders_leaves_only_king_moves() {
+    // Black king on 5e, checked down file 5 by a white rook on 5b and along
+    // the diagonal by a white bishop on 3c. The black gold on 2d attacks 3c,
+    // so capturing a checker looks available and must not be generated.
+    let sfen = "8k/4r4/6b2/7G1/4K4/9/9/9/9 b - 1";
+    let partial = PartialPosition::from_usi(&format!("sfen {sfen}")).unwrap();
+    let position = Position::new(partial);
+    assert!(position.in_check());
+
+    let moves = position.legal_moves();
+    for mv in &moves {
+        assert_eq!(
+            mv.from(),
+            Some(sq(5, 5)),
+            "non-king move generated under double check: {mv:?}"
+        );
+    }
+    let mut destinations = king_destinations(&position, sq(5, 5));
+    destinations.sort_by_key(|s| (s.file(), s.rank()));
+    // 5d/5f stay on the rook's file and 4d/6f on the bishop's diagonal, both
+    // of which still cover those squares once the king stops blocking.
+    assert_eq!(
+        destinations,
+        vec![sq(4, 5), sq(4, 6), sq(6, 4), sq(6, 5)],
+        "wrong escape set under double check"
+    );
+}
+
+/// The squares the king on `from` may legally move to.
+fn king_destinations(position: &Position, from: Square) -> Vec<Square> {
+    position
+        .legal_moves()
+        .into_iter()
+        .filter_map(|mv| match mv {
+            Move::Normal {
+                from: origin, to, ..
+            } if origin == from => Some(to),
+            _ => None,
+        })
+        .collect()
 }

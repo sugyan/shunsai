@@ -70,6 +70,31 @@ const fn step_table_both<const N: usize>(steps: [(i8, i8); N]) -> [[Bitboard; 81
     [step_table(&steps), step_table(&flip_steps(steps))]
 }
 
+/// Every square within `file_radius` files and `rank_radius` ranks.
+const fn box_table(file_radius: i8, rank_radius: i8) -> [Bitboard; 81] {
+    let mut table = [Bitboard::EMPTY; 81];
+    let mut index = 0;
+    while index < 81 {
+        let (file, rank) = (file_of(index), rank_of(index));
+        let mut bits = 0u128;
+        let mut file_delta = -file_radius;
+        while file_delta <= file_radius {
+            let mut rank_delta = -rank_radius;
+            while rank_delta <= rank_radius {
+                let (to_file, to_rank) = (file + file_delta, rank + rank_delta);
+                if on_board(to_file, to_rank) {
+                    bits |= 1 << index_of(to_file, to_rank);
+                }
+                rank_delta += 1;
+            }
+            file_delta += 1;
+        }
+        table[index] = Bitboard::from_bits(bits);
+        index += 1;
+    }
+    table
+}
+
 static PAWN_ATTACKS: [[Bitboard; 81]; 2] = step_table_both(PAWN_STEPS);
 static KNIGHT_ATTACKS: [[Bitboard; 81]; 2] = step_table_both(KNIGHT_STEPS);
 static SILVER_ATTACKS: [[Bitboard; 81]; 2] = step_table_both(SILVER_STEPS);
@@ -77,6 +102,18 @@ static GOLD_ATTACKS: [[Bitboard; 81]; 2] = step_table_both(GOLD_STEPS);
 static KING_ATTACKS: [Bitboard; 81] = step_table(&KING_STEPS);
 static ORTHOGONAL_ATTACKS: [Bitboard; 81] = step_table(&ORTHOGONAL_STEPS);
 static DIAGONAL_ATTACKS: [Bitboard; 81] = step_table(&DIAGONAL_STEPS);
+
+/// `STEP_ATTACKER_ZONE[king]`: every square from which a piece that moves a
+/// *fixed* number of steps could attack a square adjacent to `king`.
+///
+/// Two files by three ranks, because the longest-reaching such piece is the
+/// knight (one file, two ranks) and the squares that matter — the king's
+/// eight neighbours — are themselves one step away. It is deliberately a
+/// superset rather than the exact set: the point is only that anything
+/// *outside* it provably cannot bear on a king destination, which
+/// `step_attacker_zone_covers_every_step_piece` checks against the attack
+/// tables themselves.
+static STEP_ATTACKER_ZONE: [Bitboard; 81] = box_table(2, 3);
 
 /// `BETWEEN[a][b]`: the squares strictly between `a` and `b` if they share a
 /// rank, file or diagonal; empty otherwise.
@@ -126,6 +163,14 @@ pub(crate) fn gold_attacks(color: Color, square: Square) -> Bitboard {
 
 pub(crate) fn king_attacks(square: Square) -> Bitboard {
     KING_ATTACKS[square.array_index()]
+}
+
+/// Where a step piece has to stand to attack a neighbour of `king`; see
+/// [`STEP_ATTACKER_ZONE`]. Sliders are unbounded and are never covered by
+/// this.
+#[inline(always)]
+pub(crate) fn step_attacker_zone(king: Square) -> Bitboard {
+    STEP_ATTACKER_ZONE[king.array_index()]
 }
 
 /// The four orthogonally adjacent squares (the promoted bishop's extra steps).
@@ -406,6 +451,66 @@ mod tests {
                     }
                 }
             }
+        }
+    }
+
+    /// The one property `king_danger` relies on when it drops distant
+    /// pieces from its loop: if a piece whose attacks do not depend on
+    /// occupancy attacks any neighbour of the king, it stands inside
+    /// `STEP_ATTACKER_ZONE[king]`. Checked exhaustively — every king square,
+    /// every neighbour, every origin, every non-slider kind and colour —
+    /// against `attacks_of` itself, so widening a step piece's reach (or
+    /// shrinking the box) fails here.
+    #[test]
+    fn step_attacker_zone_covers_every_step_piece() {
+        let step_kinds = [
+            PieceKind::Pawn,
+            PieceKind::Knight,
+            PieceKind::Silver,
+            PieceKind::Gold,
+            PieceKind::King,
+            PieceKind::ProPawn,
+            PieceKind::ProLance,
+            PieceKind::ProKnight,
+            PieceKind::ProSilver,
+        ];
+        let mut covered = 0;
+        for king in Square::all() {
+            let zone = step_attacker_zone(king);
+            for to in king_attacks(king) {
+                for from in Square::all() {
+                    for color in Color::all() {
+                        for piece_kind in step_kinds {
+                            let piece = Piece::new(piece_kind, color);
+                            // Occupancy-independent by construction, which
+                            // is what makes `EMPTY` the whole story here.
+                            if attacks_of(piece, from, Bitboard::EMPTY).contains(to) {
+                                assert!(
+                                    zone.contains(from),
+                                    "{piece:?} on {from:?} attacks {to:?} next to king {king:?}, \
+                                     but {from:?} is outside the zone"
+                                );
+                                covered += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert!(covered > 10_000, "test exercised only {covered} attacks");
+    }
+
+    /// The zone is a *superset*, so it may not be so tight that the sliders
+    /// it excludes were the only reason it looked correct — and it must not
+    /// be the whole board either, or it would filter nothing.
+    #[test]
+    fn step_attacker_zone_is_bounded() {
+        // 5 files x 7 ranks in the middle, less at the edges.
+        assert_eq!(step_attacker_zone(sq(5, 5)).count(), 35);
+        assert_eq!(step_attacker_zone(sq(1, 1)).count(), 3 * 4);
+        for king in Square::all() {
+            assert!(step_attacker_zone(king).contains(king));
+            assert!(step_attacker_zone(king).count() < 81);
         }
     }
 
