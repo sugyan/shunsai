@@ -190,7 +190,20 @@ rather than rediscovering them:
 - **Uptime / memory pressure** — 26 days of uptime with 46 of 48 GiB used,
   4.6 GiB compressed and ~900 MB swapped was the state during one discarded
   run. A reboot is the single most effective step.
-- `sudo pmset -a powernap 0` — powernap can wake background work mid-run.
+- **Sleep during the settle period, not during the run.** This host has
+  `pmset sleep` at **1 minute** on both power sources, so "reboot and leave it
+  idle until Defender's post-boot scan finishes" does not work as written —
+  it sleeps almost immediately, the scan is suspended rather than completed,
+  and Power Nap starts Time Machine / Spotlight / sync work in its place. Hold
+  it awake instead:
+
+  ```bash
+  caffeinate -dimsu -t 900
+  ```
+
+  Power Nap only ever runs while the machine is *asleep*, so it is irrelevant
+  to a run that is actually executing; `sudo pmset -a powernap 0` is a
+  persistent belt-and-braces setting, not a fix for anything measured here.
 
 Sample Defender's share **during** the run, not before it: an idle check at
 the start says nothing about the machine while the suite is executing.
