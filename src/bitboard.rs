@@ -97,6 +97,46 @@ impl Bitboard {
         self.0 &= self.0 - 1;
         Square::from_u8(index + 1)
     }
+
+    /// Calls `f` with every square in the set, lowest array index first.
+    ///
+    /// This is the bulk form of [`Bitboard::pop`], and it is faster for two
+    /// reasons that only show up when a caller drains a whole set.
+    ///
+    /// It walks **one 64-bit word at a time** instead of popping from the
+    /// `u128`: on aarch64 `u128::trailing_zeros` needs an `rbit`/`clz` pair
+    /// on each half plus a select, and `x & (x - 1)` needs a borrow chain,
+    /// so both cost roughly twice their 64-bit counterparts. The 81 bits are
+    /// contiguous, so the low word already covers array indices 0..64 and
+    /// the high word is usually empty.
+    ///
+    /// And it builds each [`Square`] with `from_u8_unchecked`, where `pop`
+    /// goes through `Square::from_u8` — a `pub extern "C"` function that
+    /// re-checks a `0..=81` range this type's invariant already guarantees.
+    /// (`shogi_core`'s own `Bitboard::pop` does the same thing.)
+    #[inline(always)]
+    pub(crate) fn for_each_square(self, mut f: impl FnMut(Square)) {
+        let mut low = self.0 as u64;
+        while low != 0 {
+            let index = low.trailing_zeros() as u8;
+            low &= low - 1;
+            // Safety: bit `i` is the square whose `array_index()` is `i`, so
+            // `index + 1` is in `1..=64`.
+            f(unsafe { Square::from_u8_unchecked(index + 1) });
+        }
+        let mut high = (self.0 >> 64) as u64;
+        while high != 0 {
+            let index = high.trailing_zeros() as u8;
+            high &= high - 1;
+            // Safety: no operation can set a bit at 81 or above — `ALL` and
+            // `Not` mask, `single`/`file` are in range by construction, the
+            // bitwise ops preserve it, and `from_bits` is `pub(crate)`,
+            // debug-asserted, and only reached from const-evaluated tables
+            // where a violation is a compile error. So `index + 65` is in
+            // `65..=81`. `bits_stay_within_the_board` guards the property.
+            f(unsafe { Square::from_u8_unchecked(index + 65) });
+        }
+    }
 }
 
 impl BitAnd for Bitboard {
@@ -225,6 +265,58 @@ mod tests {
         });
         assert_eq!(bb.collect::<Vec<_>>(), squares);
         assert_eq!(bb.len(), 3);
+    }
+
+    #[test]
+    fn for_each_square_matches_pop() {
+        // Both words, and the boundary between them (array indices 63/64,
+        // i.e. the only place the two loops in `for_each_square` meet).
+        let mut cases = vec![Bitboard::EMPTY, Bitboard::ALL];
+        for square in Square::all() {
+            cases.push(Bitboard::single(square));
+            cases.push(!Bitboard::single(square));
+        }
+        for file in 1..=9 {
+            cases.push(Bitboard::file(file));
+        }
+        let mut state = 0x9e3779b97f4a7c15u64;
+        for _ in 0..2000 {
+            let mut bits = 0u128;
+            for _ in 0..2 {
+                state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
+                bits = (bits << 64) | state as u128;
+            }
+            cases.push(Bitboard::ALL & Bitboard::from_bits(bits & ((1 << 81) - 1)));
+        }
+        for bb in cases {
+            let mut seen = Vec::new();
+            bb.for_each_square(|square| seen.push(square));
+            assert_eq!(seen, bb.collect::<Vec<_>>(), "mismatch on {bb:?}");
+        }
+    }
+
+    /// `for_each_square` builds squares with `from_u8_unchecked`, which is
+    /// sound only because no `Bitboard` ever holds a bit at 81 or above.
+    #[test]
+    fn bits_stay_within_the_board() {
+        let inputs = [
+            Bitboard::EMPTY,
+            Bitboard::ALL,
+            Bitboard::single(Square::new(1, 1).unwrap()),
+            Bitboard::single(Square::new(9, 9).unwrap()),
+            Bitboard::file(1),
+            Bitboard::file(9),
+        ];
+        let mut all = Vec::new();
+        for a in inputs {
+            all.push(!a);
+            for b in inputs {
+                all.extend([a & b, a | b, a ^ b]);
+            }
+        }
+        for bb in all {
+            assert_eq!(bb.bits() >> 81, 0, "out-of-board bit set in {bb:?}");
+        }
     }
 
     #[test]

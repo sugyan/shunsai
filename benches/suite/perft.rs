@@ -109,13 +109,23 @@ fn perft_cb_buf(position: &mut Position, depth: u32, buf: &mut Vec<Move>) -> u64
 /// other engines' leaf move lists are stack arrays. That holds at any depth
 /// rather than only at the fixture depths, because the capacity comes from
 /// `common::tree_buf_capacity`.
-fn perft_mat(position: &mut Position, depth: u32, buf: &mut Vec<Move>) -> u64 {
+///
+/// `WI` picks how the moves are materialized: `false` drives the
+/// `MoveSetIter` that `Extend` uses (`-mat`), `true` uses
+/// `MoveSet::write_into` (`-mat-wi`, and what `examples/perft.rs
+/// --materialize` — hence the cross-engine harness — runs). A const
+/// parameter rather than a flag, so neither id carries the other's branch.
+fn perft_mat<const WI: bool>(position: &mut Position, depth: u32, buf: &mut Vec<Move>) -> u64 {
     if depth == 0 {
         return 1;
     }
     let base = buf.len();
     let _ = position.generate_moves(|set| {
-        buf.extend(set);
+        if WI {
+            set.write_into(buf);
+        } else {
+            buf.extend(set);
+        }
         ControlFlow::Continue(())
     });
     if depth == 1 {
@@ -128,7 +138,7 @@ fn perft_mat(position: &mut Position, depth: u32, buf: &mut Vec<Move>) -> u64 {
     while i < buf.len() {
         let mv = buf[i];
         position.do_move(mv);
-        nodes += perft_mat(position, depth - 1, buf);
+        nodes += perft_mat::<WI>(position, depth - 1, buf);
         position.undo_move(mv);
         i += 1;
     }
@@ -162,7 +172,15 @@ fn bench_perft(c: &mut Criterion) {
             nodes
         );
         assert_eq!(
-            perft_mat(
+            perft_mat::<false>(
+                &mut position,
+                depth,
+                &mut Vec::with_capacity(common::tree_buf_capacity(depth))
+            ),
+            nodes
+        );
+        assert_eq!(
+            perft_mat::<true>(
                 &mut position,
                 depth,
                 &mut Vec::with_capacity(common::tree_buf_capacity(depth))
@@ -193,7 +211,15 @@ fn bench_perft(c: &mut Criterion) {
             &depth,
             |b, &depth| {
                 let mut buf = Vec::with_capacity(common::tree_buf_capacity(depth));
-                b.iter(|| perft_mat(&mut position, depth, &mut buf))
+                b.iter(|| perft_mat::<false>(&mut position, depth, &mut buf))
+            },
+        );
+        group.bench_with_input(
+            BenchmarkId::new(format!("{name}-mat-wi"), depth),
+            &depth,
+            |b, &depth| {
+                let mut buf = Vec::with_capacity(common::tree_buf_capacity(depth));
+                b.iter(|| perft_mat::<true>(&mut position, depth, &mut buf))
             },
         );
     }

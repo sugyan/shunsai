@@ -74,7 +74,11 @@ fn perft_materialize(position: &mut Position, depth: u32, buf: &mut Vec<Move>) -
     }
     let base = buf.len();
     let _ = position.generate_moves(|set| {
-        buf.extend(set);
+        // `write_into` rather than `buf.extend(set)`: same moves in the same
+        // order, but it decides drop-versus-board once per set instead of
+        // once per move. Worth −42 % on the max-moves position and −11 % on
+        // the sampled real-game set (`movegen/*-wi` against `movegen/*-buf`).
+        set.write_into(buf);
         ControlFlow::Continue(())
     });
     if depth == 1 {

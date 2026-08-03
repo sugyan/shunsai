@@ -54,15 +54,18 @@ rustc, and criterion versions. The full suite takes roughly 3–5 minutes.
 | `perft/{startpos,matsuri,maxmoves}-cb/<d>` | the same trees through the callback API | as above |
 | `perft/{startpos,matsuri,maxmoves}-cb-buf/<d>` | the same again, with one buffer reused for the whole tree instead of a `Vec` per internal node | as above |
 | `perft/{startpos,matsuri,maxmoves}-mat/<d>` | the same again, but leaf parents **materialize** every move into that buffer instead of popcounting — the convention the other engines use | as above |
+| `perft/{startpos,matsuri,maxmoves}-mat-wi/<d>` | the same, materialized through `MoveSet::write_into` rather than the iterator | as above |
 | `movegen/startpos` | one `legal_moves()` call | — |
 | `movegen/matsuri` | one `legal_moves()` call | — |
 | `movegen/maxmoves` | one `legal_moves()` call | — |
 | `movegen/{startpos,matsuri,maxmoves}-cb` | the same, counted through the callback API | — |
 | `movegen/{startpos,matsuri,maxmoves}-buf` | the same, materialized into a buffer allocated outside the measured closure | — |
+| `movegen/{startpos,matsuri,maxmoves}-wi` | the same, through `MoveSet::write_into` rather than the iterator | — |
 | `movegen/sampled-v1` | `legal_moves()` over all 40 sampled real-game positions | Elements = positions |
 | `movegen/sampled-v1-check` | same, restricted to the in-check subset (evasions) | Elements = positions |
 | `movegen/sampled-v1{,-check}-cb` | the same two sweeps through the callback API | Elements = positions |
 | `movegen/sampled-v1{,-check}-buf` | the same two sweeps, materialized into a reused buffer | Elements = positions |
+| `movegen/sampled-v1{,-check}-wi` | the same two sweeps, through `MoveSet::write_into` | Elements = positions |
 | `do_undo/games-v1` | `do_move` all + `undo_move` all over 4 real games | Elements = do+undo pairs |
 | `internals/bishop-attacks` | `bishop_attacks(sq, occ)`, 81 squares × 3 positions | Elements = calls |
 | `internals/rook-attacks` | `rook_attacks(sq, occ)`, same sweep | Elements = calls |
