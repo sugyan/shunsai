@@ -15,6 +15,10 @@ use shogi_core::{Move, PartialPosition};
 use shogi_usi_parser::FromUsi;
 use shunsai::Position;
 
+/// The most legal moves any shogi position has — the count of the max-moves
+/// position in DESIGN.md §4.
+const MAX_LEGAL_MOVES: usize = 593;
+
 fn perft(position: &mut Position, depth: u32) -> u64 {
     if depth == 0 {
         return 1;
@@ -61,7 +65,9 @@ fn perft(position: &mut Position, depth: u32) -> u64 {
 /// off the end and truncates back on the way out, so the walk allocates
 /// nothing — the other engines' leaf move lists are stack arrays, and paying
 /// a `malloc` per node here would measure our driver rather than our
-/// generator.
+/// generator. The caller sizes that buffer from the depth
+/// ([`MAX_LEGAL_MOVES`] per ply), so the claim holds for whatever depth is
+/// asked for on the command line, not merely for the harness's presets.
 fn perft_materialize(position: &mut Position, depth: u32, buf: &mut Vec<Move>) -> u64 {
     if depth == 0 {
         return 1;
@@ -115,7 +121,10 @@ fn main() {
     let mut position = Position::new(partial);
     // Allocated once, outside every timed region: the point of the
     // materializing driver is that the tree walk itself never allocates.
-    let mut buf = Vec::with_capacity(4096);
+    // Every ply from the root down to the leaf parents holds its own move
+    // list at the same time, and no position exceeds MAX_LEGAL_MOVES, so
+    // this cannot grow at the requested depth.
+    let mut buf = Vec::with_capacity(MAX_LEGAL_MOVES * depth as usize);
     println!(
         "convention: leaf-parent bulk counting, {}",
         if materialize {

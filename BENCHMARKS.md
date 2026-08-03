@@ -175,42 +175,21 @@ A history entry is only worth the machine state during it, and a
 plausible-looking number is not evidence that the machine was quiet — two
 entries in DESIGN.md's decision log were re-run for exactly this reason
 (σ = 46 % on `perft/matsuri/3` once; two whole suite runs discarded another
-time). On this development host the repeat offenders are known, so check them
-rather than rediscovering them:
+time). Neither mean *looked* wrong.
 
-- **Microsoft Defender** — `wdavdaemon_unprivileged`, `wdavdaemon_enterprise`,
-  `wdavdaemon` and the `epsext` endpoint-security extension have been measured
-  at **~0.64 cores combined while idle**. It spikes for minutes after a new
-  binary appears, which is precisely when a bench run starts. It is
-  enterprise-managed and cannot be disabled locally, so the run has to be
-  gated on its CPU share instead.
-- **Zoom** — an active call moves every sub-microsecond id.
-- **Long-lived containers** — `docker ps` has shown otel-collector and jaeger
-  running for days.
-- **Uptime / memory pressure** — 26 days of uptime with 46 of 48 GiB used,
-  4.6 GiB compressed and ~900 MB swapped was the state during one discarded
-  run. A reboot is the single most effective step.
-- **Sleep during the settle period, not during the run.** This host has
-  `pmset sleep` at **1 minute** on both power sources, so "reboot and leave it
-  idle until Defender's post-boot scan finishes" does not work as written —
-  it sleeps almost immediately, the scan is suspended rather than completed,
-  and Power Nap starts Time Machine / Spotlight / sync work in its place. Hold
-  it awake instead:
+Three things are worth doing rather than assuming:
 
-  ```bash
-  caffeinate -dimsu -t 900
-  ```
-
-  Power Nap only ever runs while the machine is *asleep*, so it is irrelevant
-  to a run that is actually executing; `sudo pmset -a powernap 0` is a
-  persistent belt-and-braces setting, not a fix for anything measured here.
-
-Sample Defender's share **during** the run, not before it: an idle check at
-the start says nothing about the machine while the suite is executing.
-
-```bash
-ps -Ao %cpu,comm | awk '/wdav|epsext/ {s+=$1} END {print s"% Defender"}'
-```
+- **Build before quieting, not after.** Compiling is itself a disturbance,
+  and on a machine with an on-access scanner a freshly written binary keeps
+  one busy for minutes afterwards. Get everything built
+  (`cargo bench --features bench-internals --no-run`), then let the machine
+  settle, then measure with nothing left to compile.
+- **Sample the load *during* the run, not before it.** An idle check at the
+  start says nothing about the machine while the suite is executing, and a
+  disturbance that shifts a mean uniformly does not show up in σ at all.
+- **Close background applications and stop long-running local services**
+  before a run that will be recorded. Anything periodic is worse than
+  anything constant, because it moves some ids and not others.
 
 Acceptance for a recordable run: σ ≤ 4 % on every id, or — for the shortest
 `movegen/*` ids, where σ is demonstrably not a function of duration —

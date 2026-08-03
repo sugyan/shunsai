@@ -106,7 +106,9 @@ fn perft_cb_buf(position: &mut Position, depth: u32, buf: &mut Vec<Move>) -> u64
 ///
 /// The buffer is threaded through the whole tree and each ply truncates back
 /// on the way out, so like `perft_cb_buf` the walk allocates nothing — the
-/// other engines' leaf move lists are stack arrays.
+/// other engines' leaf move lists are stack arrays. That holds at any depth
+/// rather than only at the fixture depths, because the capacity comes from
+/// `common::tree_buf_capacity`.
 fn perft_mat(position: &mut Position, depth: u32, buf: &mut Vec<Move>) -> u64 {
     if depth == 0 {
         return 1;
@@ -152,11 +154,19 @@ fn bench_perft(c: &mut Criterion) {
         assert_eq!(perft(&mut position, depth), nodes);
         assert_eq!(perft_cb(&mut position, depth), nodes);
         assert_eq!(
-            perft_cb_buf(&mut position, depth, &mut Vec::with_capacity(4096)),
+            perft_cb_buf(
+                &mut position,
+                depth,
+                &mut Vec::with_capacity(common::tree_buf_capacity(depth))
+            ),
             nodes
         );
         assert_eq!(
-            perft_mat(&mut position, depth, &mut Vec::with_capacity(4096)),
+            perft_mat(
+                &mut position,
+                depth,
+                &mut Vec::with_capacity(common::tree_buf_capacity(depth))
+            ),
             nodes
         );
         group.throughput(Throughput::Elements(nodes));
@@ -174,7 +184,7 @@ fn bench_perft(c: &mut Criterion) {
             |b, &depth| {
                 // Allocated once, outside the measured closure: the point of
                 // this id is that the tree walk itself never allocates.
-                let mut buf = Vec::with_capacity(4096);
+                let mut buf = Vec::with_capacity(common::tree_buf_capacity(depth));
                 b.iter(|| perft_cb_buf(&mut position, depth, &mut buf))
             },
         );
@@ -182,7 +192,7 @@ fn bench_perft(c: &mut Criterion) {
             BenchmarkId::new(format!("{name}-mat"), depth),
             &depth,
             |b, &depth| {
-                let mut buf = Vec::with_capacity(4096);
+                let mut buf = Vec::with_capacity(common::tree_buf_capacity(depth));
                 b.iter(|| perft_mat(&mut position, depth, &mut buf))
             },
         );
