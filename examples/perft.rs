@@ -1,17 +1,23 @@
 //! Perft: counts leaf nodes of the legal-move tree.
 //!
-//! Usage: `cargo run --release --example perft -- <depth> [sfen]`
+//! Usage: `cargo run --release --example perft -- [--materialize] <depth> [sfen]`
 //! (omit `sfen` for the initial position)
 //!
 //! Leaves are bulk-counted at depth 1 (the cross-library comparison
-//! convention from DESIGN.md §4).
+//! convention from DESIGN.md §4). Two ways of obtaining that count are
+//! implemented, because the engines we compare against do not all do it the
+//! same way — see `perft` and `perft_materialize` below.
 
 use std::ops::ControlFlow;
 use std::time::Instant;
 
-use shogi_core::PartialPosition;
+use shogi_core::{Move, PartialPosition};
 use shogi_usi_parser::FromUsi;
 use shunsai::Position;
+
+/// The most legal moves any shogi position has — the count of the max-moves
+/// position in DESIGN.md §4.
+const MAX_LEGAL_MOVES: usize = 593;
 
 fn perft(position: &mut Position, depth: u32) -> u64 {
     if depth == 0 {
@@ -42,11 +48,67 @@ fn perft(position: &mut Position, depth: u32) -> u64 {
     nodes
 }
 
+/// The same tree, but leaf parents obtain their count by **materializing**
+/// every legal move, which is what every engine in the cross-engine harness
+/// does: YaneuraOu counts `MoveList<LEGAL_ALL>(pos).size()`, the apery driver
+/// `MoveList<LegalAll>`, and yasai / rshogi / cshogi their respective
+/// legal-move lists. `perft` above counts two popcounts per origin off the
+/// destination bitboards and constructs nothing.
+///
+/// Both are kept because they answer different questions. Counting without
+/// building moves is what `MoveSet::len()` is for and is the faster path, but
+/// it is a perft-only advantage: a search must have the moves. So this driver
+/// is the one whose numbers are comparable to the other engines', and the
+/// difference between the two is the size of that advantage (DESIGN.md §4).
+///
+/// One buffer is threaded through the whole tree, and each ply takes a slice
+/// off the end and truncates back on the way out, so the walk allocates
+/// nothing — the other engines' leaf move lists are stack arrays, and paying
+/// a `malloc` per node here would measure our driver rather than our
+/// generator. The caller sizes that buffer from the depth
+/// ([`MAX_LEGAL_MOVES`] per ply), so the claim holds for whatever depth is
+/// asked for on the command line, not merely for the harness's presets.
+fn perft_materialize(position: &mut Position, depth: u32, buf: &mut Vec<Move>) -> u64 {
+    if depth == 0 {
+        return 1;
+    }
+    let base = buf.len();
+    let _ = position.generate_moves(|set| {
+        buf.extend(set);
+        ControlFlow::Continue(())
+    });
+    if depth == 1 {
+        let nodes = (buf.len() - base) as u64;
+        buf.truncate(base);
+        return nodes;
+    }
+    let mut nodes = 0;
+    let mut i = base;
+    while i < buf.len() {
+        let mv = buf[i];
+        position.do_move(mv);
+        nodes += perft_materialize(position, depth - 1, buf);
+        position.undo_move(mv);
+        i += 1;
+    }
+    buf.truncate(base);
+    nodes
+}
+
 fn main() {
-    let mut args = std::env::args().skip(1);
+    let mut materialize = false;
+    let mut positional = Vec::new();
+    for arg in std::env::args().skip(1) {
+        if arg == "--materialize" {
+            materialize = true;
+        } else {
+            positional.push(arg);
+        }
+    }
+    let mut args = positional.into_iter();
     let depth: u32 = args
         .next()
-        .expect("usage: perft <depth> [sfen]")
+        .expect("usage: perft [--materialize] <depth> [sfen]")
         .parse()
         .expect("depth must be an integer");
     let rest: Vec<String> = args.collect();
@@ -57,9 +119,27 @@ fn main() {
         PartialPosition::from_usi(&sfen).expect("invalid SFEN")
     };
     let mut position = Position::new(partial);
+    // Allocated once, outside every timed region: the point of the
+    // materializing driver is that the tree walk itself never allocates.
+    // Every ply from the root down to the leaf parents holds its own move
+    // list at the same time, and no position exceeds MAX_LEGAL_MOVES, so
+    // this cannot grow at the requested depth.
+    let mut buf = Vec::with_capacity(MAX_LEGAL_MOVES * depth as usize);
+    println!(
+        "convention: leaf-parent bulk counting, {}",
+        if materialize {
+            "moves materialized into a reused buffer"
+        } else {
+            "counted off the destination bitboards"
+        }
+    );
     for d in 1..=depth {
         let start = Instant::now();
-        let nodes = perft(&mut position, d);
+        let nodes = if materialize {
+            perft_materialize(&mut position, d, &mut buf)
+        } else {
+            perft(&mut position, d)
+        };
         let elapsed = start.elapsed();
         // Six decimals: shallow depths now finish in single-digit
         // milliseconds, where three would quantize the result away.
