@@ -93,10 +93,9 @@ impl MoveSet {
     /// either way, so reserving only avoids a reallocation — and this method
     /// exists for callers that own and reuse a sized buffer, where there is
     /// none to avoid. Measured, it was a *per-set* cost paid to remove
-    /// nothing, and it inverted the result on exactly the positions whose
-    /// sets are smallest: with it, startpos ran +1.5 to +3.8 % and the
-    /// in-check sweep +3.4 to +8.1 % against the iterator over three runs,
-    /// while the large-set positions still won.
+    /// nothing, and it made the positions with the smallest sets lose
+    /// outright. Do not add it back without re-measuring; DESIGN.md's
+    /// decision log has the figures.
     #[inline]
     pub fn write_into(self, out: &mut Vec<Move>) {
         match self {
