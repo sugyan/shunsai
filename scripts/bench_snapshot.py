@@ -52,13 +52,16 @@ HEADLINE_COLUMNS = [
     ("perft startpos-d4 Mnps", "perft/startpos/4", _mnps),
     ("perft startpos-d4 -cb", "perft/startpos-cb/4", _mnps),
     ("perft startpos-d4 -mat", "perft/startpos-mat/4", _mnps),
+    ("perft startpos-d4 -mat-wi", "perft/startpos-mat-wi/4", _mnps),
     ("perft matsuri-d3 Mnps", "perft/matsuri/3", _mnps),
     ("perft matsuri-d3 -cb", "perft/matsuri-cb/3", _mnps),
     ("perft matsuri-d3 -mat", "perft/matsuri-mat/3", _mnps),
+    ("perft matsuri-d3 -mat-wi", "perft/matsuri-mat-wi/3", _mnps),
     ("movegen matsuri µs", "movegen/matsuri", lambda r: f"{r['mean_ns'] / 1e3:.2f}"),
     ("movegen sampled-v1 µs/pos", "movegen/sampled-v1", _us_per_element),
     ("movegen sampled-v1 -cb", "movegen/sampled-v1-cb", _us_per_element),
     ("movegen sampled-v1 -buf", "movegen/sampled-v1-buf", _us_per_element),
+    ("movegen sampled-v1 -wi", "movegen/sampled-v1-wi", _us_per_element),
     ("do_undo ns/pair", "do_undo/games-v1", lambda r: f"{r['per_element_ns']:.1f}"),
 ]
 

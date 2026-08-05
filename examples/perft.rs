@@ -74,7 +74,12 @@ fn perft_materialize(position: &mut Position, depth: u32, buf: &mut Vec<Move>) -
     }
     let base = buf.len();
     let _ = position.generate_moves(|set| {
-        buf.extend(set);
+        // `write_into` rather than `buf.extend(set)`: same moves in the same
+        // order, but it decides drop-versus-board once per set instead of
+        // once per move. The gain sorts by moves per set and is largest on
+        // the dense positions; `movegen/*-wi` against `movegen/*-buf` is the
+        // instrument, and DESIGN.md's decision log has the figures.
+        set.write_into(buf);
         ControlFlow::Continue(())
     });
     if depth == 1 {
