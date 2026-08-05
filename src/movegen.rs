@@ -82,9 +82,8 @@ impl MoveSet {
     /// board path it probes `promotions` first and falls through, so **every
     /// non-promoting move pays a failed pop** — at the initial position,
     /// where nothing can promote, that is every move. Here each destination
-    /// set gets its own loop with `promote` as a loop constant, the
-    /// drop/board decision is made once, and the capacity is reserved once
-    /// instead of being re-checked per push.
+    /// set gets its own loop with `promote` as a loop constant, and the
+    /// drop/board decision is made once.
     ///
     /// The iterator stays because it is the right shape for callers that
     /// consume moves lazily or stop early; this is for the caller that wants
@@ -231,12 +230,14 @@ impl Position {
         let mut moves = Vec::with_capacity(128);
         // The listener never breaks, so the walk is always `Continue`.
         let _ = self.generate_moves(|set| {
-            // A plain push loop rather than `extend`: `MoveSetIter` is not
-            // `TrustedLen`, so `extend` re-checks the length bound per
-            // element and measurably loses on drop-heavy positions.
-            for mv in set {
-                moves.push(mv);
-            }
+            // `write_into` rather than the iterator: this is exactly the
+            // caller it is for — the whole set, eagerly, into a buffer — so
+            // the "iterator for lazy consumption" argument does not apply
+            // here. (It replaces a plain push loop that was itself there to
+            // dodge `extend`'s per-element length re-check, `MoveSetIter`
+            // not being `TrustedLen`; `write_into` removes the per-move
+            // drop/board decision on top of that.)
+            set.write_into(&mut moves);
             ControlFlow::Continue(())
         });
         moves
@@ -793,7 +794,10 @@ mod tests {
             });
             assert!(sets > 0, "no move sets for {sfen}");
             assert_eq!(written, expected, "write_into disagrees on {sfen}");
-            assert_eq!(written, position.legal_moves(), "legal_moves disagrees");
+            // Against `expected`, not `written`: `legal_moves` drives
+            // `write_into` itself now, so comparing it to `written` would be
+            // circular. `expected` is the iterator's list.
+            assert_eq!(position.legal_moves(), expected, "legal_moves disagrees");
         }
     }
 

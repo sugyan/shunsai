@@ -128,12 +128,22 @@ impl Bitboard {
         while high != 0 {
             let index = high.trailing_zeros() as u8;
             high &= high - 1;
-            // Safety: no operation can set a bit at 81 or above — `ALL` and
-            // `Not` mask, `single`/`file` are in range by construction, the
-            // bitwise ops preserve it, and `from_bits` is `pub(crate)`,
-            // debug-asserted, and only reached from const-evaluated tables
-            // where a violation is a compile error. So `index + 65` is in
-            // `65..=81`. `bits_stay_within_the_board` guards the property.
+            // Safety: no operation can set a bit at 81 or above, so
+            // `index + 65` is in `65..=81`. `ALL` and `Not` mask,
+            // `single`/`file` are in range by construction, and the bitwise
+            // ops preserve it — `bits_stay_within_the_board` guards that
+            // much. `from_bits` is the one way in that is not structural:
+            // it is `pub(crate)`, and its callers divide in two. The table
+            // builders in `tables` and `sliders` are const-evaluated, where
+            // its `debug_assert!` is a compile error. The four runtime
+            // callers in `sliders` are in range by construction too, but
+            // only that: `file_attacks`/`lance_attacks` shift a nine-bit
+            // walk left by a multiple of nine, at most 72, and
+            // `bishop_attacks`/`rook_attacks` only OR together values read
+            // back out of those const tables. Nothing but the
+            // `debug_assert!` holds them to it, which is why a debug
+            // `cargo test` — where perft drives every one of them — is part
+            // of this function's guard and not only a correctness run.
             f(unsafe { Square::from_u8_unchecked(index + 65) });
         }
     }
