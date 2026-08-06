@@ -335,20 +335,77 @@ static LAST_RANK: [Bitboard; 2] = relative_rank_masks(1);
 /// The last two ranks: a knight landing here must promote.
 static LAST_TWO_RANKS: [Bitboard; 2] = relative_rank_masks(2);
 
-#[inline(always)]
-pub(crate) fn promotion_zone(color: Color) -> Bitboard {
-    PROMOTION_ZONE[color.array_index()]
+/// `PROMOTION_MASK[color][from]`: the destinations a promotable piece
+/// standing on `from` may promote on.
+///
+/// Promotion is legal when the move *starts or ends* in the zone, which is
+/// two conditions on one set of destinations: a piece already inside the zone
+/// may promote everywhere, and one outside it only on the zone itself. That is
+/// a per-origin fact, not a per-destination one, so it is baked per origin
+/// here rather than tested per set — `emit_normal` used to load the zone and
+/// then branch on `zone.contains(from)`.
+static PROMOTION_MASK: [[Bitboard; 81]; 2] = promotion_mask_table();
+
+const fn promotion_mask_table() -> [[Bitboard; 81]; 2] {
+    let mut table = [[Bitboard::EMPTY; 81]; 2];
+    let mut color = 0;
+    while color < 2 {
+        let zone = PROMOTION_ZONE[color];
+        let mut index = 0;
+        while index < 81 {
+            // Raw bits rather than `contains`: the builders index
+            // `array_index` arithmetic directly, `Square::new` not being const.
+            table[color][index] = if zone.bits() & (1 << index) != 0 {
+                Bitboard::ALL
+            } else {
+                zone
+            };
+            index += 1;
+        }
+        color += 1;
+    }
+    table
 }
 
-/// The ranks on which `piece_kind` would have no move left, so promotion is
-/// compulsory. Empty for pieces that are never forced.
 #[inline(always)]
-pub(crate) fn forced_promotion_zone(color: Color, piece_kind: PieceKind) -> Bitboard {
-    match piece_kind {
-        PieceKind::Pawn | PieceKind::Lance => LAST_RANK[color.array_index()],
-        PieceKind::Knight => LAST_TWO_RANKS[color.array_index()],
-        _ => Bitboard::EMPTY,
+pub(crate) fn promotion_mask(color: Color, from: Square) -> Bitboard {
+    PROMOTION_MASK[color.array_index()][from.array_index()]
+}
+
+/// The [`PieceKind`] discriminants that can promote, as a bitmask — gold,
+/// king and everything already promoted are absent.
+pub(crate) const PROMOTABLE_KINDS: u32 = (1 << PieceKind::Pawn as u32)
+    | (1 << PieceKind::Lance as u32)
+    | (1 << PieceKind::Knight as u32)
+    | (1 << PieceKind::Silver as u32)
+    | (1 << PieceKind::Bishop as u32)
+    | (1 << PieceKind::Rook as u32);
+
+/// `FORCED_PROMOTION[piece.as_u8() & 31]`: the ranks on which `piece` would
+/// have no move left, so promotion is compulsory. Empty for the pieces that
+/// are never forced.
+///
+/// Indexed by piece for the same reason as [`STEP_ATTACKS`]: it replaces a
+/// `match` on the kind followed by a colour-indexed load, in a function that
+/// runs once per generated set.
+static FORCED_PROMOTION: [Bitboard; 32] = forced_promotion_table();
+
+const fn forced_promotion_table() -> [Bitboard; 32] {
+    let mut table = [Bitboard::EMPTY; 32];
+    let mut color = 0;
+    while color < 2 {
+        let base = color * 16;
+        table[base + PieceKind::Pawn as usize] = LAST_RANK[color];
+        table[base + PieceKind::Lance as usize] = LAST_RANK[color];
+        table[base + PieceKind::Knight as usize] = LAST_TWO_RANKS[color];
+        color += 1;
     }
+    table
+}
+
+#[inline(always)]
+pub(crate) fn forced_promotion_zone(piece: Piece) -> Bitboard {
+    FORCED_PROMOTION[(piece.as_u8() & 31) as usize]
 }
 
 // Slider attacks live in `crate::sliders`, which is the swap boundary for
@@ -725,6 +782,53 @@ mod tests {
             // The low nibble must recover the kind for both colours, which is
             // what the `SLIDER_KINDS` test reads.
             assert_eq!(index & 15, piece_kind as usize);
+        }
+    }
+
+    /// The two promotion tables replaced code that read the rules directly —
+    /// `piece_kind.promote().is_some()`, `zone.contains(from)`, and a `match`
+    /// on the kind — so hold each to the rule it encodes, over every piece and
+    /// square.
+    ///
+    /// `PROMOTABLE_KINDS` against `PieceKind::promote()` catches a wrong bit
+    /// in the mask; `promotion_mask` against the start-or-end-in-the-zone rule
+    /// catches a colour swap or an inverted `contains`; `forced_promotion_zone`
+    /// against the per-kind ranks catches a row filed under the wrong kind —
+    /// the failure mode the `attacks_of` sabotage found the perft values blind
+    /// to.
+    #[test]
+    fn promotion_tables_match_the_rules() {
+        for piece in Piece::all() {
+            let (piece_kind, color) = piece.to_parts();
+            assert_eq!(
+                PROMOTABLE_KINDS >> (piece.as_u8() & 15) & 1 != 0,
+                piece_kind.promote().is_some(),
+                "PROMOTABLE_KINDS disagrees for {piece:?}"
+            );
+            let forced = match piece_kind {
+                PieceKind::Pawn | PieceKind::Lance => LAST_RANK[color.array_index()],
+                PieceKind::Knight => LAST_TWO_RANKS[color.array_index()],
+                _ => Bitboard::EMPTY,
+            };
+            assert_eq!(
+                forced_promotion_zone(piece),
+                forced,
+                "forced_promotion_zone disagrees for {piece:?}"
+            );
+            for from in Square::all() {
+                let zone = PROMOTION_ZONE[color.array_index()];
+                // Promotion is legal iff the move starts or ends in the zone.
+                let expected = if zone.contains(from) {
+                    Bitboard::ALL
+                } else {
+                    zone
+                };
+                assert_eq!(
+                    promotion_mask(color, from),
+                    expected,
+                    "promotion_mask disagrees for {color:?} from {from:?}"
+                );
+            }
         }
     }
 

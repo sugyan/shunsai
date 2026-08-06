@@ -485,7 +485,7 @@ mod tests {
                     // (a piece with no move left); nifu and pawn-drop mate
                     // do not affect the resulting position, so they need no
                     // filtering here.
-                    if crate::tables::forced_promotion_zone(side, piece_kind).contains(to) {
+                    if crate::tables::forced_promotion_zone(piece).contains(to) {
                         continue;
                     }
                     let mut expected = position.clone();

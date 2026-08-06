@@ -324,6 +324,15 @@ pub(crate) fn generate_legal(
 
 /// Splits the destinations of one piece into its promoting and
 /// non-promoting sets and hands them to `listener`.
+///
+/// Runs once per generated set, so what it costs is a *per-set* cost — the
+/// side of the ledger `MoveSet::write_into` did not touch, and the one the
+/// initial position is dominated by (30 moves out of ~20 origins). Both
+/// decisions it makes are therefore table lookups keyed on things already in
+/// hand: whether the piece can promote at all is a bitmask test on the kind
+/// discriminant, and *where* it may promote is baked per origin in
+/// [`tables::promotion_mask`], which used to be a zone load plus a
+/// `zone.contains(from)` branch.
 #[inline]
 fn emit_normal(
     us: Color,
@@ -335,21 +344,13 @@ fn emit_normal(
     if attacks.is_empty() {
         return ControlFlow::Continue(());
     }
-    let piece_kind = piece.piece_kind();
-    let promotions = if piece_kind.promote().is_some() {
-        // Promotion is allowed when the move starts or ends in the zone,
-        // so leaving it covers every destination at once.
-        let zone = tables::promotion_zone(us);
-        if zone.contains(from) {
-            attacks
-        } else {
-            attacks & zone
-        }
+    let promotions = if tables::PROMOTABLE_KINDS >> (piece.as_u8() & 15) & 1 != 0 {
+        attacks & tables::promotion_mask(us, from)
     } else {
         Bitboard::EMPTY
     };
     // A piece that would have no move left must promote.
-    let non_promotions = attacks & !tables::forced_promotion_zone(us, piece_kind);
+    let non_promotions = attacks & !tables::forced_promotion_zone(piece);
     listener(MoveSet::Normal {
         piece,
         from,
@@ -632,7 +633,7 @@ fn generate_drops(
         let piece = Piece::new(piece_kind, us);
         // A piece may not be dropped where it could never move again —
         // exactly the squares that would force promotion for a board move.
-        let mut drops = targets & !tables::forced_promotion_zone(us, piece_kind);
+        let mut drops = targets & !tables::forced_promotion_zone(piece);
         if piece_kind == PieceKind::Pawn {
             drops &= !pawn_files;
             // Only a pawn that gives check can be a pawn-drop mate, and by
@@ -756,10 +757,7 @@ mod tests {
                     // A compulsory promotion is one that never appears as a
                     // non-promoting move.
                     for to in promotions & !non_promotions {
-                        assert!(
-                            tables::forced_promotion_zone(piece.color(), piece.piece_kind())
-                                .contains(to)
-                        );
+                        assert!(tables::forced_promotion_zone(piece).contains(to));
                     }
                 }
                 ControlFlow::Continue(())
