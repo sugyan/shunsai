@@ -33,10 +33,13 @@ fn perft(position: &mut Position, depth: u32) -> u64 {
         return nodes;
     }
     // Deeper nodes still need the moves themselves, and `do_move` cannot
-    // run while the callback holds the position borrowed.
-    let mut moves = Vec::with_capacity(128);
+    // run while the callback holds the position borrowed. `write_into`
+    // rather than `extend`: the internal nodes are a small share of this
+    // tree, but they are not free, and the `--materialize` driver below has
+    // used `write_into` since it was added.
+    let mut moves = Vec::with_capacity(MAX_LEGAL_MOVES);
     let _ = position.generate_moves(|set| {
-        moves.extend(set);
+        set.write_into(&mut moves);
         ControlFlow::Continue(())
     });
     let mut nodes = 0;
