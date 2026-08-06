@@ -103,6 +103,68 @@ static KING_ATTACKS: [Bitboard; 81] = step_table(&KING_STEPS);
 static ORTHOGONAL_ATTACKS: [Bitboard; 81] = step_table(&ORTHOGONAL_STEPS);
 static DIAGONAL_ATTACKS: [Bitboard; 81] = step_table(&DIAGONAL_STEPS);
 
+/// `STEP_ATTACKS[piece.as_u8() & 31][square]`: the attacks of `piece` on
+/// `square` that do not depend on occupancy.
+///
+/// One table indexed by the *piece* — colour and kind together — so
+/// [`attacks_of`] can serve every non-slider with a single indexed load
+/// instead of dispatching on [`PieceKind`]. `Piece::as_u8` is
+/// `discriminant + 16 * colour`, i.e. `1..=14` and `17..=30`, so masking with
+/// 31 lands in a 32-row table and the index is provably in range without a
+/// bounds check.
+///
+/// Three rows per colour are empty because their piece has no
+/// occupancy-independent attack at all: lance, bishop and rook. The two
+/// promoted sliders hold only their *step* half — a horse's orthogonal
+/// neighbours, a dragon's diagonal ones — which [`attacks_of`] ORs onto the
+/// sliding half. The unused indices (0, 15, 16, 31) stay empty.
+///
+/// This duplicates the per-kind tables above rather than replacing them: the
+/// reverse-lookup scans in `movegen` want a specific kind's table for a known
+/// colour, where a two-row table is the better shape. Cost of the duplication
+/// is 40.5 KiB of `.rodata`, which matters only to the deferred
+/// magic-versus-qugiy re-run under cache pressure — see DESIGN.md.
+static STEP_ATTACKS: [[Bitboard; 81]; 32] = step_attacks_table();
+
+const fn step_attacks_table() -> [[Bitboard; 81]; 32] {
+    let mut table = [[Bitboard::EMPTY; 81]; 32];
+    let pawn = step_table_both(PAWN_STEPS);
+    let knight = step_table_both(KNIGHT_STEPS);
+    let silver = step_table_both(SILVER_STEPS);
+    let gold = step_table_both(GOLD_STEPS);
+    let king = step_table(&KING_STEPS);
+    let orthogonal = step_table(&ORTHOGONAL_STEPS);
+    let diagonal = step_table(&DIAGONAL_STEPS);
+    let mut color = 0;
+    while color < 2 {
+        // `Piece::as_u8` puts White 16 above Black; the offsets are the
+        // `PieceKind` discriminants, and `piece_index_matches_as_u8` holds
+        // this arithmetic to `Piece::as_u8` itself.
+        let base = color * 16;
+        table[base + PieceKind::Pawn as usize] = pawn[color];
+        table[base + PieceKind::Knight as usize] = knight[color];
+        table[base + PieceKind::Silver as usize] = silver[color];
+        table[base + PieceKind::Gold as usize] = gold[color];
+        table[base + PieceKind::King as usize] = king;
+        table[base + PieceKind::ProPawn as usize] = gold[color];
+        table[base + PieceKind::ProLance as usize] = gold[color];
+        table[base + PieceKind::ProKnight as usize] = gold[color];
+        table[base + PieceKind::ProSilver as usize] = gold[color];
+        table[base + PieceKind::ProBishop as usize] = orthogonal;
+        table[base + PieceKind::ProRook as usize] = diagonal;
+        color += 1;
+    }
+    table
+}
+
+/// The [`PieceKind`] discriminants whose attacks depend on `occupied`, as a
+/// bitmask — the one test [`attacks_of`] makes before its table load.
+const SLIDER_KINDS: u32 = (1 << PieceKind::Lance as u32)
+    | (1 << PieceKind::Bishop as u32)
+    | (1 << PieceKind::Rook as u32)
+    | (1 << PieceKind::ProBishop as u32)
+    | (1 << PieceKind::ProRook as u32);
+
 /// `STEP_ATTACKER_ZONE[king]`: every square from which a piece that moves a
 /// *fixed* number of steps could attack a square adjacent to `king`.
 ///
@@ -296,23 +358,34 @@ pub(crate) use crate::sliders::lance_attacks;
 
 /// The squares attacked by `piece` on `square`, given `occupied` (relevant to
 /// sliders only).
+///
+/// Called once per origin in generation's dense pass and once per relevant
+/// enemy piece in [`king_danger`](crate::movegen), so the *dispatch* is on the
+/// hot path in its own right. It used to be a ten-arm `match` on
+/// [`PieceKind`], which LLVM lowers to a jump table: an indirect branch whose
+/// target is whatever piece the mailbox happened to yield, and therefore
+/// poorly predicted. Nine of the fourteen kinds want nothing but a table
+/// lookup, so those are folded into one [`STEP_ATTACKS`] row and reached
+/// through a single well-predicted *direct* branch instead. Only the five
+/// slider kinds still dispatch, and there are few of them per node.
+#[inline]
 pub(crate) fn attacks_of(piece: Piece, square: Square, occupied: Bitboard) -> Bitboard {
+    let index = (piece.as_u8() & 31) as usize;
+    // The low four bits are the `PieceKind` discriminant for either colour.
+    if SLIDER_KINDS >> (index & 15) & 1 == 0 {
+        return STEP_ATTACKS[index][square.array_index()];
+    }
     let (piece_kind, color) = piece.to_parts();
     match piece_kind {
-        PieceKind::Pawn => pawn_attacks(color, square),
         PieceKind::Lance => lance_attacks(color, square, occupied),
-        PieceKind::Knight => knight_attacks(color, square),
-        PieceKind::Silver => silver_attacks(color, square),
-        PieceKind::Gold
-        | PieceKind::ProPawn
-        | PieceKind::ProLance
-        | PieceKind::ProKnight
-        | PieceKind::ProSilver => gold_attacks(color, square),
-        PieceKind::King => king_attacks(square),
         PieceKind::Bishop => bishop_attacks(square, occupied),
         PieceKind::Rook => rook_attacks(square, occupied),
-        PieceKind::ProBishop => bishop_attacks(square, occupied) | orthogonal_attacks(square),
-        PieceKind::ProRook => rook_attacks(square, occupied) | diagonal_attacks(square),
+        PieceKind::ProBishop => {
+            bishop_attacks(square, occupied) | STEP_ATTACKS[index][square.array_index()]
+        }
+        // `ProRook`; `SLIDER_KINDS` admits nothing else, and
+        // `attacks_of_matches_the_per_kind_tables` covers every kind.
+        _ => rook_attacks(square, occupied) | STEP_ATTACKS[index][square.array_index()],
     }
 }
 
@@ -626,5 +699,89 @@ mod tests {
             Bitboard::EMPTY,
         );
         assert_eq!(dragon.count(), 16 + 4);
+    }
+
+    /// [`STEP_ATTACKS`] is indexed by `Piece::as_u8() & 31`, and the const
+    /// builder writes each row at `16 * colour + discriminant`. Nothing in the
+    /// type system ties those two together — `as_u8` is an upstream
+    /// representation this crate is reading through a mask — so pin it.
+    ///
+    /// Also pins the mask itself: every real piece must land in `0..32` and no
+    /// two pieces may collide, or one would silently serve the other's
+    /// attacks.
+    #[test]
+    fn piece_index_matches_as_u8() {
+        let mut seen = [None; 32];
+        for piece in Piece::all() {
+            let (piece_kind, color) = piece.to_parts();
+            let expected = 16 * color.array_index() + piece_kind as usize;
+            let index = (piece.as_u8() & 31) as usize;
+            assert_eq!(index, expected, "index arithmetic disagrees for {piece:?}");
+            assert_eq!(index, piece.as_u8() as usize, "the mask dropped a bit");
+            assert!(
+                seen[index].replace(piece).is_none(),
+                "index {index} is shared by two pieces"
+            );
+            // The low nibble must recover the kind for both colours, which is
+            // what the `SLIDER_KINDS` test reads.
+            assert_eq!(index & 15, piece_kind as usize);
+        }
+    }
+
+    /// `attacks_of` no longer dispatches per kind, so hold the folded form to
+    /// the per-kind tables it replaced — over **every** piece and square, on
+    /// an empty board and on populated ones.
+    ///
+    /// This is the test that catches a mis-filed [`STEP_ATTACKS`] row (a gold
+    /// row under `ProSilver`, a colour swapped, `orthogonal` and `diagonal`
+    /// exchanged between horse and dragon) and a wrong bit in
+    /// [`SLIDER_KINDS`] — a slider treated as a step piece returns its step
+    /// half alone, and a step piece treated as a slider falls into the
+    /// `_ => rook_attacks(..)` arm.
+    #[test]
+    fn attacks_of_matches_the_per_kind_tables() {
+        fn reference(piece: Piece, square: Square, occupied: Bitboard) -> Bitboard {
+            let (piece_kind, color) = piece.to_parts();
+            match piece_kind {
+                PieceKind::Pawn => pawn_attacks(color, square),
+                PieceKind::Lance => lance_attacks(color, square, occupied),
+                PieceKind::Knight => knight_attacks(color, square),
+                PieceKind::Silver => silver_attacks(color, square),
+                PieceKind::Gold
+                | PieceKind::ProPawn
+                | PieceKind::ProLance
+                | PieceKind::ProKnight
+                | PieceKind::ProSilver => gold_attacks(color, square),
+                PieceKind::King => king_attacks(square),
+                PieceKind::Bishop => bishop_attacks(square, occupied),
+                PieceKind::Rook => rook_attacks(square, occupied),
+                PieceKind::ProBishop => {
+                    bishop_attacks(square, occupied) | orthogonal_attacks(square)
+                }
+                PieceKind::ProRook => rook_attacks(square, occupied) | diagonal_attacks(square),
+            }
+        }
+
+        let mut occupancies = vec![Bitboard::EMPTY, Bitboard::ALL];
+        let mut state = 0x9e3779b97f4a7c15u64;
+        for _ in 0..64 {
+            let mut bits = 0u128;
+            for _ in 0..2 {
+                state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
+                bits = (bits << 64) | state as u128;
+            }
+            occupancies.push(Bitboard::ALL & Bitboard::from_bits(bits & ((1 << 81) - 1)));
+        }
+        for piece in Piece::all() {
+            for square in Square::all() {
+                for &occupied in &occupancies {
+                    assert_eq!(
+                        attacks_of(piece, square, occupied),
+                        reference(piece, square, occupied),
+                        "{piece:?} on {square:?} with {occupied:?}"
+                    );
+                }
+            }
+        }
     }
 }
