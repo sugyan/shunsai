@@ -546,12 +546,16 @@ fn check_info(position: &Position, us: Color, king: Square, occupied: Bitboard) 
         & their;
     let lances = position.piece_kind_bb(PieceKind::Lance) & their;
 
-    let empty = Bitboard::EMPTY;
-    let snipers = (tables::rook_attacks(king, empty) & rooks)
-        | (tables::bishop_attacks(king, empty) & bishops)
+    // All three are `{rook,bishop,lance}_attacks(.., EMPTY)`. With no
+    // occupancy to consult they are fixed by the king square alone — by the
+    // king square *and* `us` for the lance, which only attacks forwards — so
+    // each is one load rather than a magic multiply-shift-and-two-loads;
+    // see [`tables::rook_rays`].
+    let snipers = (tables::rook_rays(king) & rooks)
+        | (tables::bishop_rays(king) & bishops)
         // A lance only attacks forwards, so the squares it could pin from
         // are the ones our own lance would attack from the king.
-        | (tables::lance_attacks(us, king, empty) & lances);
+        | (tables::lance_rays(us, king) & lances);
 
     let mut checkers = Bitboard::EMPTY;
     let mut pinned = Bitboard::EMPTY;
@@ -709,6 +713,14 @@ mod tests {
         // the bishop on 2b. The other half of `check_info` accumulates too,
         // and one sniper cannot tell that apart either.
         "4r4/7b1/9/4GS3/4K4/9/9/9/8k b - 1",
+        // The only fixture with *promoted* sliders: a white dragon on 4a and
+        // a white horse on 1c, both far outside the king's step-attacker box,
+        // so each bears on it only by sliding — the dragon's file covers 4i
+        // and the horse's diagonal covers 6h, two of the king's own
+        // destinations. Elsewhere in this list a dragon arrives only when
+        // matsuri happens to promote its rook within the two plies walked,
+        // i.e. incidentally and subject to another position's move ordering.
+        "k4+R3/9/8+B/9/9/9/9/9/4K4 b - 1",
     ];
 
     fn position_of(sfen: &str) -> Position {

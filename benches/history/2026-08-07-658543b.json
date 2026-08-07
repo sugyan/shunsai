@@ -1,0 +1,482 @@
+{
+  "meta": {
+    "date": "2026-08-07",
+    "git": {
+      "rev": "658543bf7405b152a2b1cbce9e2c77a3c48f0341",
+      "short_rev": "658543b",
+      "branch": "claude/performance-improvement-candidates-52d419",
+      "dirty": false,
+      "committed": "2026-08-07T13:02:43+09:00"
+    },
+    "rustc": "rustc 1.94.1 (e408947bf 2026-03-25)",
+    "criterion": "0.8.2",
+    "cpu": "Apple M4 Pro",
+    "os": "macOS-26.6-arm64-arm-64bit-Mach-O",
+    "arch": "arm64",
+    "position_sets": [
+      "games-v1",
+      "sampled-v1"
+    ],
+    "note": "check_info's empty-board sniper scan served from ray tables: generation -3.4% on the sampled-v1 real-game fixture, -3.0% on its in-check subset, -0.9..-1.8% on the three fixture positions, and -1.6..-2.3% on the perft trees. Recorded on agreement across four independent runs (42 of 46 ids within 4%) rather than sigma - the ids over the bar drifted monotonically across runs rather than scattering, so the median of the four is what the DESIGN.md entry quotes. Control: all 11 ids this change cannot reach (internals/*, do_undo) reproduce their 2026-08-06 figures within +-1.7%, which is what makes the cross-day read sound."
+  },
+  "results": {
+    "do_undo/games-v1": {
+      "mean_ns": 6661.616235726055,
+      "mean_stderr_ns": 6.746472116179465,
+      "median_ns": 6637.956642769982,
+      "std_dev_ns": 67.73984835297192,
+      "throughput": {
+        "Elements": 614
+      },
+      "per_element_ns": 10.849537843202043,
+      "elements_per_sec": 92169824.60009266
+    },
+    "internals/attackers-to": {
+      "mean_ns": 2207.2448699966203,
+      "mean_stderr_ns": 3.4441739873255797,
+      "median_ns": 2201.588441784731,
+      "std_dev_ns": 34.5347268213441,
+      "throughput": {
+        "Elements": 243
+      },
+      "per_element_ns": 9.083312222208313,
+      "elements_per_sec": 110091998.99074726
+    },
+    "internals/bishop-attacks": {
+      "mean_ns": 570.7071023208222,
+      "mean_stderr_ns": 0.7335085631356448,
+      "median_ns": 569.4309627619343,
+      "std_dev_ns": 7.370460851178424,
+      "throughput": {
+        "Elements": 243
+      },
+      "per_element_ns": 2.3485888984395973,
+      "elements_per_sec": 425787587.03338844
+    },
+    "internals/bishop-attacks-magic": {
+      "mean_ns": 571.6682787135873,
+      "mean_stderr_ns": 0.8559087239428351,
+      "median_ns": 569.8047606717587,
+      "std_dev_ns": 8.603819082841948,
+      "throughput": {
+        "Elements": 243
+      },
+      "per_element_ns": 2.352544356846038,
+      "elements_per_sec": 425071687.6346849
+    },
+    "internals/bishop-attacks-naive": {
+      "mean_ns": 2991.6099318125234,
+      "mean_stderr_ns": 3.1154057849687526,
+      "median_ns": 2986.265451014243,
+      "std_dev_ns": 31.291653398704923,
+      "throughput": {
+        "Elements": 243
+      },
+      "per_element_ns": 12.311151982767585,
+      "elements_per_sec": 81227167.15704104
+    },
+    "internals/bishop-attacks-qugiy": {
+      "mean_ns": 621.0252197190599,
+      "mean_stderr_ns": 0.5830787087778369,
+      "median_ns": 618.987193638865,
+      "std_dev_ns": 5.872842376971288,
+      "throughput": {
+        "Elements": 243
+      },
+      "per_element_ns": 2.555659340407654,
+      "elements_per_sec": 391288457.0290536
+    },
+    "internals/lance-attacks": {
+      "mean_ns": 422.22235798538605,
+      "mean_stderr_ns": 0.421002121222408,
+      "median_ns": 421.5026852037743,
+      "std_dev_ns": 4.219883169260151,
+      "throughput": {
+        "Elements": 486
+      },
+      "per_element_ns": 0.8687702839205474,
+      "elements_per_sec": 1151052261.4646127
+    },
+    "internals/rook-attacks": {
+      "mean_ns": 567.855119527117,
+      "mean_stderr_ns": 0.46555402072066876,
+      "median_ns": 566.9998507164846,
+      "std_dev_ns": 4.675229427372082,
+      "throughput": {
+        "Elements": 243
+      },
+      "per_element_ns": 2.3368523437329918,
+      "elements_per_sec": 427926053.0438801
+    },
+    "internals/rook-attacks-magic": {
+      "mean_ns": 567.4499328788307,
+      "mean_stderr_ns": 0.5219372650266084,
+      "median_ns": 566.2984563420044,
+      "std_dev_ns": 5.265915397474756,
+      "throughput": {
+        "Elements": 243
+      },
+      "per_element_ns": 2.3351849089663816,
+      "elements_per_sec": 428231612.9058182
+    },
+    "internals/rook-attacks-naive": {
+      "mean_ns": 4722.6503272262,
+      "mean_stderr_ns": 6.631602006373214,
+      "median_ns": 4714.385237138916,
+      "std_dev_ns": 66.84761165823568,
+      "throughput": {
+        "Elements": 243
+      },
+      "per_element_ns": 19.434775009161317,
+      "elements_per_sec": 51454158.82245162
+    },
+    "internals/rook-attacks-qugiy": {
+      "mean_ns": 690.655705753305,
+      "mean_stderr_ns": 0.620880190542577,
+      "median_ns": 690.7592417836831,
+      "std_dev_ns": 6.248038642454925,
+      "throughput": {
+        "Elements": 243
+      },
+      "per_element_ns": 2.8422045504251234,
+      "elements_per_sec": 351839560.5447977
+    },
+    "movegen/matsuri": {
+      "mean_ns": 211.0954732498693,
+      "mean_stderr_ns": 0.3131922962865969,
+      "median_ns": 210.34258518740108,
+      "std_dev_ns": 3.148349382834306,
+      "throughput": null
+    },
+    "movegen/matsuri-buf": {
+      "mean_ns": 250.70438426540352,
+      "mean_stderr_ns": 0.3021694458635285,
+      "median_ns": 249.72197940142246,
+      "std_dev_ns": 3.041329859908826,
+      "throughput": null
+    },
+    "movegen/matsuri-cb": {
+      "mean_ns": 59.87695985948614,
+      "mean_stderr_ns": 0.24063709708769462,
+      "median_ns": 59.19590800496392,
+      "std_dev_ns": 2.426578153464805,
+      "throughput": null
+    },
+    "movegen/matsuri-wi": {
+      "mean_ns": 191.12747540458207,
+      "mean_stderr_ns": 1.0917401529902908,
+      "median_ns": 188.2980921245453,
+      "std_dev_ns": 10.972494024386899,
+      "throughput": null
+    },
+    "movegen/maxmoves": {
+      "mean_ns": 463.356662586882,
+      "mean_stderr_ns": 5.299247557554792,
+      "median_ns": 455.45399659265973,
+      "std_dev_ns": 53.3324905771329,
+      "throughput": null
+    },
+    "movegen/maxmoves-buf": {
+      "mean_ns": 620.7107160773136,
+      "mean_stderr_ns": 0.6991123558907254,
+      "median_ns": 618.825603104678,
+      "std_dev_ns": 7.018025883046775,
+      "throughput": null
+    },
+    "movegen/maxmoves-cb": {
+      "mean_ns": 83.0115951283637,
+      "mean_stderr_ns": 0.1214996710575442,
+      "median_ns": 82.89839578444376,
+      "std_dev_ns": 1.2233351275330886,
+      "throughput": null
+    },
+    "movegen/maxmoves-wi": {
+      "mean_ns": 429.5715231260124,
+      "mean_stderr_ns": 0.566125998756202,
+      "median_ns": 428.64638446009315,
+      "std_dev_ns": 5.698705746725279,
+      "throughput": null
+    },
+    "movegen/sampled-v1": {
+      "mean_ns": 6861.666622728759,
+      "mean_stderr_ns": 19.449740364641176,
+      "median_ns": 6821.8504482272365,
+      "std_dev_ns": 195.19894665172484,
+      "throughput": {
+        "Elements": 40
+      },
+      "per_element_ns": 171.54166556821897,
+      "elements_per_sec": 5829487.528219891
+    },
+    "movegen/sampled-v1-buf": {
+      "mean_ns": 6521.164750369665,
+      "mean_stderr_ns": 11.816578045523272,
+      "median_ns": 6498.437560950306,
+      "std_dev_ns": 118.34454961248167,
+      "throughput": {
+        "Elements": 40
+      },
+      "per_element_ns": 163.0291187592416,
+      "elements_per_sec": 6133873.553452629
+    },
+    "movegen/sampled-v1-cb": {
+      "mean_ns": 2611.3204513142778,
+      "mean_stderr_ns": 4.393759624717004,
+      "median_ns": 2599.3412848021035,
+      "std_dev_ns": 44.151397520176516,
+      "throughput": {
+        "Elements": 40
+      },
+      "per_element_ns": 65.28301128285695,
+      "elements_per_sec": 15317920.854894692
+    },
+    "movegen/sampled-v1-check": {
+      "mean_ns": 756.159012203623,
+      "mean_stderr_ns": 0.7726817352747223,
+      "median_ns": 754.2913228221664,
+      "std_dev_ns": 7.786701770246278,
+      "throughput": {
+        "Elements": 9
+      },
+      "per_element_ns": 84.01766802262478,
+      "elements_per_sec": 11902258.459860062
+    },
+    "movegen/sampled-v1-check-buf": {
+      "mean_ns": 570.1982525708405,
+      "mean_stderr_ns": 0.37248265809683545,
+      "median_ns": 569.6780357610605,
+      "std_dev_ns": 3.7420265908611046,
+      "throughput": {
+        "Elements": 9
+      },
+      "per_element_ns": 63.35536139676006,
+      "elements_per_sec": 15783983.832679063
+    },
+    "movegen/sampled-v1-check-cb": {
+      "mean_ns": 496.64309214207736,
+      "mean_stderr_ns": 0.36062443538729483,
+      "median_ns": 495.99507765558303,
+      "std_dev_ns": 3.6252607808799215,
+      "throughput": {
+        "Elements": 9
+      },
+      "per_element_ns": 55.18256579356415,
+      "elements_per_sec": 18121665.52278416
+    },
+    "movegen/sampled-v1-check-wi": {
+      "mean_ns": 546.0817972119196,
+      "mean_stderr_ns": 0.6943551009146413,
+      "median_ns": 543.8946320286659,
+      "std_dev_ns": 6.969630106090403,
+      "throughput": {
+        "Elements": 9
+      },
+      "per_element_ns": 60.67575524576884,
+      "elements_per_sec": 16481047.429067377
+    },
+    "movegen/sampled-v1-wi": {
+      "mean_ns": 5611.618862289669,
+      "mean_stderr_ns": 5.566040301648827,
+      "median_ns": 5611.007726396363,
+      "std_dev_ns": 55.848198800727005,
+      "throughput": {
+        "Elements": 40
+      },
+      "per_element_ns": 140.29047155724172,
+      "elements_per_sec": 7128067.8502244335
+    },
+    "movegen/startpos": {
+      "mean_ns": 133.71818404559235,
+      "mean_stderr_ns": 0.2015162891441944,
+      "median_ns": 133.22341906199313,
+      "std_dev_ns": 2.021290236435539,
+      "throughput": null
+    },
+    "movegen/startpos-buf": {
+      "mean_ns": 111.1463749533849,
+      "mean_stderr_ns": 0.15084511814038964,
+      "median_ns": 110.79178042328041,
+      "std_dev_ns": 1.5195379576402968,
+      "throughput": null
+    },
+    "movegen/startpos-cb": {
+      "mean_ns": 66.09979961688569,
+      "mean_stderr_ns": 0.14538055865852165,
+      "median_ns": 65.81088722379731,
+      "std_dev_ns": 1.4628419284473104,
+      "throughput": null
+    },
+    "movegen/startpos-wi": {
+      "mean_ns": 98.99913609372166,
+      "mean_stderr_ns": 0.15423100732173825,
+      "median_ns": 98.72022065172993,
+      "std_dev_ns": 1.5523709301635407,
+      "throughput": null
+    },
+    "perft/matsuri/3": {
+      "mean_ns": 6577993.749342105,
+      "mean_stderr_ns": 27742.976748181587,
+      "median_ns": 6529465.736842105,
+      "std_dev_ns": 127278.70511181593,
+      "throughput": {
+        "Elements": 4809015
+      },
+      "per_element_ns": 1.3678463779676515,
+      "elements_per_sec": 731076249.5754836
+    },
+    "perft/matsuri-cb/3": {
+      "mean_ns": 2174482.829525863,
+      "mean_stderr_ns": 8067.975204552547,
+      "median_ns": 2175014.006465517,
+      "std_dev_ns": 37129.76234837825,
+      "throughput": {
+        "Elements": 4809015
+      },
+      "per_element_ns": 0.4521680280734959,
+      "elements_per_sec": 2211567244.7266855
+    },
+    "perft/matsuri-cb-buf/3": {
+      "mean_ns": 2173782.693421052,
+      "mean_stderr_ns": 9516.687388788854,
+      "median_ns": 2168960.070175438,
+      "std_dev_ns": 43811.87104725274,
+      "throughput": {
+        "Elements": 4809015
+      },
+      "per_element_ns": 0.45202243981793605,
+      "elements_per_sec": 2212279550.552349
+    },
+    "perft/matsuri-mat/3": {
+      "mean_ns": 8047611.673015873,
+      "mean_stderr_ns": 51889.63228343633,
+      "median_ns": 7957057.206349207,
+      "std_dev_ns": 238338.25061803075,
+      "throughput": {
+        "Elements": 4809015
+      },
+      "per_element_ns": 1.673442830395803,
+      "elements_per_sec": 597570458.8387281
+    },
+    "perft/matsuri-mat-wi/3": {
+      "mean_ns": 6055808.584337349,
+      "mean_stderr_ns": 28790.750085304353,
+      "median_ns": 6008886.801204819,
+      "std_dev_ns": 132550.92070609075,
+      "throughput": {
+        "Elements": 4809015
+      },
+      "per_element_ns": 1.2592617374529604,
+      "elements_per_sec": 794116084.2563555
+    },
+    "perft/maxmoves/2": {
+      "mean_ns": 123032.81715954273,
+      "mean_stderr_ns": 406.89529050524453,
+      "median_ns": 122600.65121769384,
+      "std_dev_ns": 1865.0577435845662,
+      "throughput": {
+        "Elements": 105677
+      },
+      "per_element_ns": 1.164234574784889,
+      "elements_per_sec": 858933432.8820854
+    },
+    "perft/maxmoves-cb/2": {
+      "mean_ns": 52457.79533862283,
+      "mean_stderr_ns": 92.03144331907365,
+      "median_ns": 52380.07891754038,
+      "std_dev_ns": 423.4582115424321,
+      "throughput": {
+        "Elements": 105677
+      },
+      "per_element_ns": 0.4963974690672789,
+      "elements_per_sec": 2014514703.064422
+    },
+    "perft/maxmoves-cb-buf/2": {
+      "mean_ns": 47215.68573968372,
+      "mean_stderr_ns": 305.4114132756174,
+      "median_ns": 46756.53836436792,
+      "std_dev_ns": 1395.489853039931,
+      "throughput": {
+        "Elements": 105677
+      },
+      "per_element_ns": 0.4467924500097819,
+      "elements_per_sec": 2238175689.804307
+    },
+    "perft/maxmoves-mat/2": {
+      "mean_ns": 149533.98791143027,
+      "mean_stderr_ns": 1144.4214168113303,
+      "median_ns": 149625.72935368042,
+      "std_dev_ns": 5259.711827910328,
+      "throughput": {
+        "Elements": 105677
+      },
+      "per_element_ns": 1.4150097742311976,
+      "elements_per_sec": 706708899.2677237
+    },
+    "perft/maxmoves-mat-wi/2": {
+      "mean_ns": 117017.69458058437,
+      "mean_stderr_ns": 583.9041300152414,
+      "median_ns": 116432.17872290293,
+      "std_dev_ns": 2678.0742928145996,
+      "throughput": {
+        "Elements": 105677
+      },
+      "per_element_ns": 1.1073146908086373,
+      "elements_per_sec": 903085643.4043435
+    },
+    "perft/startpos/4": {
+      "mean_ns": 3787793.3083333345,
+      "mean_stderr_ns": 5446.8898459443435,
+      "median_ns": 3785482.6363636362,
+      "std_dev_ns": 24903.89812789782,
+      "throughput": {
+        "Elements": 719731
+      },
+      "per_element_ns": 5.262790276274517,
+      "elements_per_sec": 190013271.9535028
+    },
+    "perft/startpos-cb/4": {
+      "mean_ns": 2145704.022173913,
+      "mean_stderr_ns": 1899.1910543968643,
+      "median_ns": 2144135.236956522,
+      "std_dev_ns": 8739.72184696433,
+      "throughput": {
+        "Elements": 719731
+      },
+      "per_element_ns": 2.9812583064699356,
+      "elements_per_sec": 335428834.80770415
+    },
+    "perft/startpos-cb-buf/4": {
+      "mean_ns": 2164400.425869566,
+      "mean_stderr_ns": 2589.8980824736204,
+      "median_ns": 2157937.228260869,
+      "std_dev_ns": 11841.437703983296,
+      "throughput": {
+        "Elements": 719731
+      },
+      "per_element_ns": 3.0072352390956705,
+      "elements_per_sec": 332531352.05369496
+    },
+    "perft/startpos-mat/4": {
+      "mean_ns": 3580454.941428571,
+      "mean_stderr_ns": 4434.056536181341,
+      "median_ns": 3577240.625,
+      "std_dev_ns": 20367.253633322303,
+      "throughput": {
+        "Elements": 719731
+      },
+      "per_element_ns": 4.974712693254245,
+      "elements_per_sec": 201016633.85626447
+    },
+    "perft/startpos-mat-wi/4": {
+      "mean_ns": 3327094.901315789,
+      "mean_stderr_ns": 12800.016553178906,
+      "median_ns": 3312760.828947368,
+      "std_dev_ns": 58657.38152692129,
+      "throughput": {
+        "Elements": 719731
+      },
+      "per_element_ns": 4.62269222989671,
+      "elements_per_sec": 216324157.0642794
+    }
+  }
+}
