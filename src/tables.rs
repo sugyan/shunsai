@@ -293,20 +293,25 @@ pub(crate) fn diagonal_attacks(square: Square) -> Bitboard {
     DIAGONAL_ATTACKS[square.array_index()]
 }
 
-/// `rook_attacks(square, Bitboard::EMPTY)`, as one load; see [`ROOK_RAYS`].
+/// `rook_attacks(square, Bitboard::EMPTY)`, as one load from [`ROOK_RAYS`],
+/// which carries the rationale for all three.
 #[inline(always)]
 pub(crate) fn rook_rays(square: Square) -> Bitboard {
     ROOK_RAYS[square.array_index()]
 }
 
-/// `bishop_attacks(square, Bitboard::EMPTY)`, as one load; see [`ROOK_RAYS`].
+/// `bishop_attacks(square, Bitboard::EMPTY)`, as one load from
+/// [`BISHOP_RAYS`]; [`ROOK_RAYS`] carries the rationale for all three.
 #[inline(always)]
 pub(crate) fn bishop_rays(square: Square) -> Bitboard {
     BISHOP_RAYS[square.array_index()]
 }
 
-/// `lance_attacks(color, square, Bitboard::EMPTY)`, as one load; see
-/// [`ROOK_RAYS`].
+/// `lance_attacks(color, square, Bitboard::EMPTY)`, as one load from
+/// [`LANCE_RAYS`]; [`ROOK_RAYS`] carries the rationale for all three.
+///
+/// Unlike the other two this is keyed on the colour as well, since a lance
+/// only attacks forwards.
 #[inline(always)]
 pub(crate) fn lance_rays(color: Color, square: Square) -> Bitboard {
     LANCE_RAYS[color.array_index()][square.array_index()]

@@ -546,9 +546,11 @@ fn check_info(position: &Position, us: Color, king: Square, occupied: Bitboard) 
         & their;
     let lances = position.piece_kind_bb(PieceKind::Lance) & their;
 
-    // All three are `{rook,bishop,lance}_attacks(king, EMPTY)`, which depend
-    // only on the king square, so they are one load each rather than a magic
-    // multiply-shift-and-two-loads apiece; see [`tables::rook_rays`].
+    // All three are `{rook,bishop,lance}_attacks(.., EMPTY)`. With no
+    // occupancy to consult they are fixed by the king square alone — by the
+    // king square *and* `us` for the lance, which only attacks forwards — so
+    // each is one load rather than a magic multiply-shift-and-two-loads;
+    // see [`tables::rook_rays`].
     let snipers = (tables::rook_rays(king) & rooks)
         | (tables::bishop_rays(king) & bishops)
         // A lance only attacks forwards, so the squares it could pin from
