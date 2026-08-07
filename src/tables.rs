@@ -103,6 +103,68 @@ static KING_ATTACKS: [Bitboard; 81] = step_table(&KING_STEPS);
 static ORTHOGONAL_ATTACKS: [Bitboard; 81] = step_table(&ORTHOGONAL_STEPS);
 static DIAGONAL_ATTACKS: [Bitboard; 81] = step_table(&DIAGONAL_STEPS);
 
+/// `STEP_ATTACKS[piece.as_u8() & 31][square]`: the attacks of `piece` on
+/// `square` that do not depend on occupancy.
+///
+/// One table indexed by the *piece* — colour and kind together — so
+/// [`attacks_of`] can serve every non-slider with a single indexed load
+/// instead of dispatching on [`PieceKind`]. `Piece::as_u8` is
+/// `discriminant + 16 * colour`, i.e. `1..=14` and `17..=30`, so masking with
+/// 31 lands in a 32-row table and the index is provably in range without a
+/// bounds check.
+///
+/// Three rows per colour are empty because their piece has no
+/// occupancy-independent attack at all: lance, bishop and rook. The two
+/// promoted sliders hold only their *step* half — a horse's orthogonal
+/// neighbours, a dragon's diagonal ones — which [`attacks_of`] ORs onto the
+/// sliding half. The unused indices (0, 15, 16, 31) stay empty.
+///
+/// This duplicates the per-kind tables above rather than replacing them: the
+/// reverse-lookup scans in `movegen` want a specific kind's table for a known
+/// colour, where a two-row table is the better shape. Cost of the duplication
+/// is 40.5 KiB of `.rodata`, which matters only to the deferred
+/// magic-versus-qugiy re-run under cache pressure — see DESIGN.md.
+static STEP_ATTACKS: [[Bitboard; 81]; 32] = step_attacks_table();
+
+const fn step_attacks_table() -> [[Bitboard; 81]; 32] {
+    let mut table = [[Bitboard::EMPTY; 81]; 32];
+    let pawn = step_table_both(PAWN_STEPS);
+    let knight = step_table_both(KNIGHT_STEPS);
+    let silver = step_table_both(SILVER_STEPS);
+    let gold = step_table_both(GOLD_STEPS);
+    let king = step_table(&KING_STEPS);
+    let orthogonal = step_table(&ORTHOGONAL_STEPS);
+    let diagonal = step_table(&DIAGONAL_STEPS);
+    let mut color = 0;
+    while color < 2 {
+        // `Piece::as_u8` puts White 16 above Black; the offsets are the
+        // `PieceKind` discriminants, and `piece_index_matches_as_u8` holds
+        // this arithmetic to `Piece::as_u8` itself.
+        let base = color * 16;
+        table[base + PieceKind::Pawn as usize] = pawn[color];
+        table[base + PieceKind::Knight as usize] = knight[color];
+        table[base + PieceKind::Silver as usize] = silver[color];
+        table[base + PieceKind::Gold as usize] = gold[color];
+        table[base + PieceKind::King as usize] = king;
+        table[base + PieceKind::ProPawn as usize] = gold[color];
+        table[base + PieceKind::ProLance as usize] = gold[color];
+        table[base + PieceKind::ProKnight as usize] = gold[color];
+        table[base + PieceKind::ProSilver as usize] = gold[color];
+        table[base + PieceKind::ProBishop as usize] = orthogonal;
+        table[base + PieceKind::ProRook as usize] = diagonal;
+        color += 1;
+    }
+    table
+}
+
+/// The [`PieceKind`] discriminants whose attacks depend on `occupied`, as a
+/// bitmask — the one test [`attacks_of`] makes before its table load.
+const SLIDER_KINDS: u32 = (1 << PieceKind::Lance as u32)
+    | (1 << PieceKind::Bishop as u32)
+    | (1 << PieceKind::Rook as u32)
+    | (1 << PieceKind::ProBishop as u32)
+    | (1 << PieceKind::ProRook as u32);
+
 /// `STEP_ATTACKER_ZONE[king]`: every square from which a piece that moves a
 /// *fixed* number of steps could attack a square adjacent to `king`.
 ///
@@ -273,20 +335,77 @@ static LAST_RANK: [Bitboard; 2] = relative_rank_masks(1);
 /// The last two ranks: a knight landing here must promote.
 static LAST_TWO_RANKS: [Bitboard; 2] = relative_rank_masks(2);
 
-#[inline(always)]
-pub(crate) fn promotion_zone(color: Color) -> Bitboard {
-    PROMOTION_ZONE[color.array_index()]
+/// `PROMOTION_MASK[color][from]`: the destinations a promotable piece
+/// standing on `from` may promote on.
+///
+/// Promotion is legal when the move *starts or ends* in the zone, which is
+/// two conditions on one set of destinations: a piece already inside the zone
+/// may promote everywhere, and one outside it only on the zone itself. That is
+/// a per-origin fact, not a per-destination one, so it is baked per origin
+/// here rather than tested per set — `emit_normal` used to load the zone and
+/// then branch on `zone.contains(from)`.
+static PROMOTION_MASK: [[Bitboard; 81]; 2] = promotion_mask_table();
+
+const fn promotion_mask_table() -> [[Bitboard; 81]; 2] {
+    let mut table = [[Bitboard::EMPTY; 81]; 2];
+    let mut color = 0;
+    while color < 2 {
+        let zone = PROMOTION_ZONE[color];
+        let mut index = 0;
+        while index < 81 {
+            // Raw bits rather than `contains`: the builders index
+            // `array_index` arithmetic directly, `Square::new` not being const.
+            table[color][index] = if zone.bits() & (1 << index) != 0 {
+                Bitboard::ALL
+            } else {
+                zone
+            };
+            index += 1;
+        }
+        color += 1;
+    }
+    table
 }
 
-/// The ranks on which `piece_kind` would have no move left, so promotion is
-/// compulsory. Empty for pieces that are never forced.
 #[inline(always)]
-pub(crate) fn forced_promotion_zone(color: Color, piece_kind: PieceKind) -> Bitboard {
-    match piece_kind {
-        PieceKind::Pawn | PieceKind::Lance => LAST_RANK[color.array_index()],
-        PieceKind::Knight => LAST_TWO_RANKS[color.array_index()],
-        _ => Bitboard::EMPTY,
+pub(crate) fn promotion_mask(color: Color, from: Square) -> Bitboard {
+    PROMOTION_MASK[color.array_index()][from.array_index()]
+}
+
+/// The [`PieceKind`] discriminants that can promote, as a bitmask — gold,
+/// king and everything already promoted are absent.
+pub(crate) const PROMOTABLE_KINDS: u32 = (1 << PieceKind::Pawn as u32)
+    | (1 << PieceKind::Lance as u32)
+    | (1 << PieceKind::Knight as u32)
+    | (1 << PieceKind::Silver as u32)
+    | (1 << PieceKind::Bishop as u32)
+    | (1 << PieceKind::Rook as u32);
+
+/// `FORCED_PROMOTION[piece.as_u8() & 31]`: the ranks on which `piece` would
+/// have no move left, so promotion is compulsory. Empty for the pieces that
+/// are never forced.
+///
+/// Indexed by piece for the same reason as [`STEP_ATTACKS`]: it replaces a
+/// `match` on the kind followed by a colour-indexed load, in a function that
+/// runs once per generated set.
+static FORCED_PROMOTION: [Bitboard; 32] = forced_promotion_table();
+
+const fn forced_promotion_table() -> [Bitboard; 32] {
+    let mut table = [Bitboard::EMPTY; 32];
+    let mut color = 0;
+    while color < 2 {
+        let base = color * 16;
+        table[base + PieceKind::Pawn as usize] = LAST_RANK[color];
+        table[base + PieceKind::Lance as usize] = LAST_RANK[color];
+        table[base + PieceKind::Knight as usize] = LAST_TWO_RANKS[color];
+        color += 1;
     }
+    table
+}
+
+#[inline(always)]
+pub(crate) fn forced_promotion_zone(piece: Piece) -> Bitboard {
+    FORCED_PROMOTION[(piece.as_u8() & 31) as usize]
 }
 
 // Slider attacks live in `crate::sliders`, which is the swap boundary for
@@ -296,23 +415,34 @@ pub(crate) use crate::sliders::lance_attacks;
 
 /// The squares attacked by `piece` on `square`, given `occupied` (relevant to
 /// sliders only).
+///
+/// Called once per origin in generation's dense pass and once per relevant
+/// enemy piece in [`king_danger`](crate::movegen), so the *dispatch* is on the
+/// hot path in its own right. It used to be a ten-arm `match` on
+/// [`PieceKind`], which LLVM lowers to a jump table: an indirect branch whose
+/// target is whatever piece the mailbox happened to yield, and therefore
+/// poorly predicted. Nine of the fourteen kinds want nothing but a table
+/// lookup, so those are folded into one [`STEP_ATTACKS`] row and reached
+/// through a single well-predicted *direct* branch instead. Only the five
+/// slider kinds still dispatch, and there are few of them per node.
+#[inline]
 pub(crate) fn attacks_of(piece: Piece, square: Square, occupied: Bitboard) -> Bitboard {
+    let index = (piece.as_u8() & 31) as usize;
+    // The low four bits are the `PieceKind` discriminant for either colour.
+    if SLIDER_KINDS >> (index & 15) & 1 == 0 {
+        return STEP_ATTACKS[index][square.array_index()];
+    }
     let (piece_kind, color) = piece.to_parts();
     match piece_kind {
-        PieceKind::Pawn => pawn_attacks(color, square),
         PieceKind::Lance => lance_attacks(color, square, occupied),
-        PieceKind::Knight => knight_attacks(color, square),
-        PieceKind::Silver => silver_attacks(color, square),
-        PieceKind::Gold
-        | PieceKind::ProPawn
-        | PieceKind::ProLance
-        | PieceKind::ProKnight
-        | PieceKind::ProSilver => gold_attacks(color, square),
-        PieceKind::King => king_attacks(square),
         PieceKind::Bishop => bishop_attacks(square, occupied),
         PieceKind::Rook => rook_attacks(square, occupied),
-        PieceKind::ProBishop => bishop_attacks(square, occupied) | orthogonal_attacks(square),
-        PieceKind::ProRook => rook_attacks(square, occupied) | diagonal_attacks(square),
+        PieceKind::ProBishop => {
+            bishop_attacks(square, occupied) | STEP_ATTACKS[index][square.array_index()]
+        }
+        // `ProRook`; `SLIDER_KINDS` admits nothing else, and
+        // `attacks_of_matches_the_per_kind_tables` covers every kind.
+        _ => rook_attacks(square, occupied) | STEP_ATTACKS[index][square.array_index()],
     }
 }
 
@@ -626,5 +756,136 @@ mod tests {
             Bitboard::EMPTY,
         );
         assert_eq!(dragon.count(), 16 + 4);
+    }
+
+    /// [`STEP_ATTACKS`] is indexed by `Piece::as_u8() & 31`, and the const
+    /// builder writes each row at `16 * colour + discriminant`. Nothing in the
+    /// type system ties those two together — `as_u8` is an upstream
+    /// representation this crate is reading through a mask — so pin it.
+    ///
+    /// Also pins the mask itself: every real piece must land in `0..32` and no
+    /// two pieces may collide, or one would silently serve the other's
+    /// attacks.
+    #[test]
+    fn piece_index_matches_as_u8() {
+        let mut seen = [None; 32];
+        for piece in Piece::all() {
+            let (piece_kind, color) = piece.to_parts();
+            let expected = 16 * color.array_index() + piece_kind as usize;
+            let index = (piece.as_u8() & 31) as usize;
+            assert_eq!(index, expected, "index arithmetic disagrees for {piece:?}");
+            assert_eq!(index, piece.as_u8() as usize, "the mask dropped a bit");
+            assert!(
+                seen[index].replace(piece).is_none(),
+                "index {index} is shared by two pieces"
+            );
+            // The low nibble must recover the kind for both colours, which is
+            // what the `SLIDER_KINDS` test reads.
+            assert_eq!(index & 15, piece_kind as usize);
+        }
+    }
+
+    /// The two promotion tables replaced code that read the rules directly —
+    /// `piece_kind.promote().is_some()`, `zone.contains(from)`, and a `match`
+    /// on the kind — so hold each to the rule it encodes, over every piece and
+    /// square.
+    ///
+    /// `PROMOTABLE_KINDS` against `PieceKind::promote()` catches a wrong bit
+    /// in the mask; `promotion_mask` against the start-or-end-in-the-zone rule
+    /// catches a colour swap or an inverted `contains`; `forced_promotion_zone`
+    /// against the per-kind ranks catches a row filed under the wrong kind —
+    /// the failure mode the `attacks_of` sabotage found the perft values blind
+    /// to.
+    #[test]
+    fn promotion_tables_match_the_rules() {
+        for piece in Piece::all() {
+            let (piece_kind, color) = piece.to_parts();
+            assert_eq!(
+                PROMOTABLE_KINDS >> (piece.as_u8() & 15) & 1 != 0,
+                piece_kind.promote().is_some(),
+                "PROMOTABLE_KINDS disagrees for {piece:?}"
+            );
+            let forced = match piece_kind {
+                PieceKind::Pawn | PieceKind::Lance => LAST_RANK[color.array_index()],
+                PieceKind::Knight => LAST_TWO_RANKS[color.array_index()],
+                _ => Bitboard::EMPTY,
+            };
+            assert_eq!(
+                forced_promotion_zone(piece),
+                forced,
+                "forced_promotion_zone disagrees for {piece:?}"
+            );
+            for from in Square::all() {
+                let zone = PROMOTION_ZONE[color.array_index()];
+                // Promotion is legal iff the move starts or ends in the zone.
+                let expected = if zone.contains(from) {
+                    Bitboard::ALL
+                } else {
+                    zone
+                };
+                assert_eq!(
+                    promotion_mask(color, from),
+                    expected,
+                    "promotion_mask disagrees for {color:?} from {from:?}"
+                );
+            }
+        }
+    }
+
+    /// `attacks_of` no longer dispatches per kind, so hold the folded form to
+    /// the per-kind tables it replaced — over **every** piece and square, on
+    /// an empty board and on populated ones.
+    ///
+    /// This is the test that catches a mis-filed [`STEP_ATTACKS`] row (a gold
+    /// row under `ProSilver`, a colour swapped, `orthogonal` and `diagonal`
+    /// exchanged between horse and dragon) and a wrong bit in
+    /// [`SLIDER_KINDS`] — a slider treated as a step piece returns its step
+    /// half alone, and a step piece treated as a slider falls into the
+    /// `_ => rook_attacks(..)` arm.
+    #[test]
+    fn attacks_of_matches_the_per_kind_tables() {
+        fn reference(piece: Piece, square: Square, occupied: Bitboard) -> Bitboard {
+            let (piece_kind, color) = piece.to_parts();
+            match piece_kind {
+                PieceKind::Pawn => pawn_attacks(color, square),
+                PieceKind::Lance => lance_attacks(color, square, occupied),
+                PieceKind::Knight => knight_attacks(color, square),
+                PieceKind::Silver => silver_attacks(color, square),
+                PieceKind::Gold
+                | PieceKind::ProPawn
+                | PieceKind::ProLance
+                | PieceKind::ProKnight
+                | PieceKind::ProSilver => gold_attacks(color, square),
+                PieceKind::King => king_attacks(square),
+                PieceKind::Bishop => bishop_attacks(square, occupied),
+                PieceKind::Rook => rook_attacks(square, occupied),
+                PieceKind::ProBishop => {
+                    bishop_attacks(square, occupied) | orthogonal_attacks(square)
+                }
+                PieceKind::ProRook => rook_attacks(square, occupied) | diagonal_attacks(square),
+            }
+        }
+
+        let mut occupancies = vec![Bitboard::EMPTY, Bitboard::ALL];
+        let mut state = 0x9e3779b97f4a7c15u64;
+        for _ in 0..64 {
+            let mut bits = 0u128;
+            for _ in 0..2 {
+                state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
+                bits = (bits << 64) | state as u128;
+            }
+            occupancies.push(Bitboard::ALL & Bitboard::from_bits(bits & ((1 << 81) - 1)));
+        }
+        for piece in Piece::all() {
+            for square in Square::all() {
+                for &occupied in &occupancies {
+                    assert_eq!(
+                        attacks_of(piece, square, occupied),
+                        reference(piece, square, occupied),
+                        "{piece:?} on {square:?} with {occupied:?}"
+                    );
+                }
+            }
+        }
     }
 }
