@@ -70,6 +70,38 @@ const fn step_table_both<const N: usize>(steps: [(i8, i8); N]) -> [[Bitboard; 81
     [step_table(&steps), step_table(&flip_steps(steps))]
 }
 
+/// Like [`step_table`], but each step is repeated to the board edge: the
+/// squares a slider with those directions attacks on an **empty** board.
+const fn ray_table(steps: &[(i8, i8)]) -> [Bitboard; 81] {
+    let mut table = [Bitboard::EMPTY; 81];
+    let mut index = 0;
+    while index < 81 {
+        let mut bits = 0u128;
+        let mut i = 0;
+        while i < steps.len() {
+            let (file_delta, rank_delta) = steps[i];
+            let (mut file, mut rank) = (file_of(index), rank_of(index));
+            loop {
+                file += file_delta;
+                rank += rank_delta;
+                if !on_board(file, rank) {
+                    break;
+                }
+                bits |= 1 << index_of(file, rank);
+            }
+            i += 1;
+        }
+        table[index] = Bitboard::from_bits(bits);
+        index += 1;
+    }
+    table
+}
+
+/// Builds `[Black's table, White's table]`, as [`step_table_both`] does.
+const fn ray_table_both<const N: usize>(steps: [(i8, i8); N]) -> [[Bitboard; 81]; 2] {
+    [ray_table(&steps), ray_table(&flip_steps(steps))]
+}
+
 /// Every square within `file_radius` files and `rank_radius` ranks.
 const fn box_table(file_radius: i8, rank_radius: i8) -> [Bitboard; 81] {
     let mut table = [Bitboard::EMPTY; 81];
@@ -102,6 +134,22 @@ static GOLD_ATTACKS: [[Bitboard; 81]; 2] = step_table_both(GOLD_STEPS);
 static KING_ATTACKS: [Bitboard; 81] = step_table(&KING_STEPS);
 static ORTHOGONAL_ATTACKS: [Bitboard; 81] = step_table(&ORTHOGONAL_STEPS);
 static DIAGONAL_ATTACKS: [Bitboard; 81] = step_table(&DIAGONAL_STEPS);
+
+/// Slider attacks on an **empty** board, which depend only on the origin.
+///
+/// The one caller is the sniper scan in `check_info`, which asks "which
+/// enemy sliders would reach the king if nothing were in the way" and then
+/// counts blockers. Nothing there varies with occupancy, so going through
+/// the live slider backend — for the rook a magic multiply plus a shift and
+/// two loads for the rank, plus the file table; for the bishop two such
+/// lookups — is paying a general mechanism for a constant. These three
+/// tables are ~5.1 KiB total against the backend's ~486 KiB, and the guard
+/// `empty_board_rays_match_the_naive_backend` holds each entry to
+/// `sliders::naive` over all 81 squares.
+static ROOK_RAYS: [Bitboard; 81] = ray_table(&ORTHOGONAL_STEPS);
+static BISHOP_RAYS: [Bitboard; 81] = ray_table(&DIAGONAL_STEPS);
+/// A lance only moves forward, so its ray is the pawn's step repeated.
+static LANCE_RAYS: [[Bitboard; 81]; 2] = ray_table_both(PAWN_STEPS);
 
 /// `STEP_ATTACKS[piece.as_u8() & 31][square]`: the attacks of `piece` on
 /// `square` that do not depend on occupancy.
@@ -243,6 +291,25 @@ pub(crate) fn orthogonal_attacks(square: Square) -> Bitboard {
 /// The four diagonally adjacent squares (the promoted rook's extra steps).
 pub(crate) fn diagonal_attacks(square: Square) -> Bitboard {
     DIAGONAL_ATTACKS[square.array_index()]
+}
+
+/// `rook_attacks(square, Bitboard::EMPTY)`, as one load; see [`ROOK_RAYS`].
+#[inline(always)]
+pub(crate) fn rook_rays(square: Square) -> Bitboard {
+    ROOK_RAYS[square.array_index()]
+}
+
+/// `bishop_attacks(square, Bitboard::EMPTY)`, as one load; see [`ROOK_RAYS`].
+#[inline(always)]
+pub(crate) fn bishop_rays(square: Square) -> Bitboard {
+    BISHOP_RAYS[square.array_index()]
+}
+
+/// `lance_attacks(color, square, Bitboard::EMPTY)`, as one load; see
+/// [`ROOK_RAYS`].
+#[inline(always)]
+pub(crate) fn lance_rays(color: Color, square: Square) -> Bitboard {
+    LANCE_RAYS[color.array_index()][square.array_index()]
 }
 
 /// `LINE[a][b]`: every square of the rank, file or diagonal through `a` and
@@ -716,6 +783,35 @@ mod tests {
             8
         );
         assert!(lance_attacks(Color::Black, sq(5, 1), Bitboard::EMPTY).is_empty());
+    }
+
+    /// The empty-board ray tables must equal what the backend would have
+    /// returned, or `check_info` would find the wrong snipers. Held to
+    /// `naive` rather than to the live backend so the guard does not depend
+    /// on the thing `sliders/tests.rs` is itself checking.
+    #[test]
+    fn empty_board_rays_match_the_naive_backend() {
+        use crate::sliders::naive;
+
+        for square in Square::all() {
+            assert_eq!(
+                rook_rays(square),
+                naive::rook_attacks(square, Bitboard::EMPTY),
+                "rook rays at {square:?}"
+            );
+            assert_eq!(
+                bishop_rays(square),
+                naive::bishop_attacks(square, Bitboard::EMPTY),
+                "bishop rays at {square:?}"
+            );
+            for color in Color::all() {
+                assert_eq!(
+                    lance_rays(color, square),
+                    naive::lance_attacks(color, square, Bitboard::EMPTY),
+                    "lance rays for {color:?} at {square:?}"
+                );
+            }
+        }
     }
 
     #[test]
