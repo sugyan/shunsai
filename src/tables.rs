@@ -256,12 +256,18 @@ const fn slider_attacker_zone(steps: &[(i8, i8)]) -> [Bitboard; 81] {
     table
 }
 
-/// Where a rook, dragon or lance has to stand to attack a neighbour of
-/// `king`. A lance rides along in the orthogonal set rather than getting its
-/// own colour-keyed table: its ray is a subset of the rook's, so this is a
+/// Where a rook, dragon or lance has to stand to attack a neighbour of `king`
+/// **along a rank or file**. A dragon's diagonal sidesteps are not on any rank
+/// or file, so they are not in here at all — [`STEP_ATTACKER_ZONE`] is what
+/// covers them, and `king_danger` needs both terms for a dragon.
+///
+/// A lance rides along in the orthogonal set rather than getting its own
+/// colour-keyed table: its ray is a subset of the rook's, so this is a
 /// superset for it, which is the safe direction.
 static ORTHOGONAL_ATTACKER_ZONE: [Bitboard; 81] = slider_attacker_zone(&ORTHOGONAL_STEPS);
-/// Where a bishop or horse has to stand to attack a neighbour of `king`.
+/// Where a bishop or horse has to stand to attack a neighbour of `king`
+/// **along a diagonal**. As above, a horse's orthogonal sidesteps are not on
+/// any diagonal and belong to [`STEP_ATTACKER_ZONE`].
 static DIAGONAL_ATTACKER_ZONE: [Bitboard; 81] = slider_attacker_zone(&DIAGONAL_STEPS);
 
 /// `BETWEEN[a][b]`: the squares strictly between `a` and `b` if they share a
@@ -330,15 +336,17 @@ pub(crate) fn step_attacker_zone(king: Square) -> Bitboard {
     STEP_ATTACKER_ZONE[king.array_index()]
 }
 
-/// Where a rook, dragon or lance has to stand to attack a neighbour of
-/// `king`; see [`ORTHOGONAL_ATTACKER_ZONE`].
+/// Where a rook, dragon or lance has to stand to attack a neighbour of `king`
+/// **along a rank or file**; see [`ORTHOGONAL_ATTACKER_ZONE`]. A dragon's
+/// diagonal step is [`step_attacker_zone`]'s to cover.
 #[inline(always)]
 pub(crate) fn orthogonal_attacker_zone(king: Square) -> Bitboard {
     ORTHOGONAL_ATTACKER_ZONE[king.array_index()]
 }
 
-/// Where a bishop or horse has to stand to attack a neighbour of `king`; see
-/// [`DIAGONAL_ATTACKER_ZONE`].
+/// Where a bishop or horse has to stand to attack a neighbour of `king`
+/// **along a diagonal**; see [`DIAGONAL_ATTACKER_ZONE`]. A horse's orthogonal
+/// step is [`step_attacker_zone`]'s to cover.
 #[inline(always)]
 pub(crate) fn diagonal_attacker_zone(king: Square) -> Bitboard {
     DIAGONAL_ATTACKER_ZONE[king.array_index()]
@@ -892,9 +900,20 @@ mod tests {
             orthogonal += o.count() as usize;
             diagonal += d.count() as usize;
         }
-        // Means over the 81 king squares, ~42 and ~45 of 81 squares.
-        assert_eq!(orthogonal / 81, 42);
-        assert_eq!(diagonal / 81, 44);
+        // Exact totals, not `sum / 81`: the truncating mean would accept any
+        // orthogonal total in 3402..=3482, i.e. it would let the zones grow by
+        // 57 squares without noticing, which is the opposite of what this test
+        // is for. Means are 42.3 and 44.7 of 81 squares.
+        assert_eq!(orthogonal, 3425);
+        assert_eq!(diagonal, 3617);
+        // The extremes the means average over, in the shape
+        // `step_attacker_zone_is_bounded` uses. The centre is where the
+        // diagonal zone is weakest — 65 of 81 squares, against 26 in a corner
+        // — so the filter earns most of its keep with the king still at home.
+        assert_eq!(orthogonal_attacker_zone(sq(5, 5)).count(), 45);
+        assert_eq!(orthogonal_attacker_zone(sq(1, 1)).count(), 32);
+        assert_eq!(diagonal_attacker_zone(sq(5, 5)).count(), 65);
+        assert_eq!(diagonal_attacker_zone(sq(1, 1)).count(), 26);
     }
 
     #[test]

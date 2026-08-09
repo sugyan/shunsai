@@ -753,6 +753,18 @@ mod tests {
         // matsuri happens to promote its rook within the two plies walked,
         // i.e. incidentally and subject to another position's move ordering.
         "k4+R3/9/8+B/9/9/9/9/9/4K4 b - 1",
+        // A promoted slider caught by the *step* term alone: the white dragon
+        // on 3g stands two files and two ranks from the king on 5i, so it is
+        // inside `STEP_ATTACKER_ZONE` and outside `ORTHOGONAL_ATTACKER_ZONE`
+        // — its rank and file miss the king's neighbourhood entirely, and what
+        // reaches 4h is its *diagonal* sidestep. Restricting the step term to
+        // the non-sliders therefore drops it and makes 4h a legal king move,
+        // which is exactly the tidying `king_danger` warns against. That
+        // configuration occurs nowhere else in this list for a dragon (the
+        // horse half of it is reached twice, in the in-check position, after
+        // Bx6h+), so without this fixture the invariant rests on the random
+        // differential playouts alone.
+        "4k4/9/9/9/9/9/6+r2/9/4K4 b - 1",
     ];
 
     fn position_of(sfen: &str) -> Position {
@@ -932,7 +944,18 @@ mod tests {
     /// node, whether or not the difference would have changed a move.
     #[test]
     fn king_danger_agrees_with_the_unfiltered_scan() {
-        fn walk(position: &mut Position, depth: u32, nodes: &mut u64, dropped: &mut u64) {
+        /// `step_only` counts the nodes where an enemy *promoted* slider is
+        /// held by the step term alone — inside `STEP_ATTACKER_ZONE`, outside
+        /// its own ray zone — which is the one configuration that tells
+        /// "the step term applies to every enemy piece" apart from "the step
+        /// term applies to the non-sliders", the shape this loop used to have.
+        fn walk(
+            position: &mut Position,
+            depth: u32,
+            nodes: &mut u64,
+            dropped: &mut u64,
+            step_only: &mut u64,
+        ) {
             let us = position.side_to_move();
             if let Some(king) = position.king_square(us) {
                 let occupied = position.occupied();
@@ -957,9 +980,19 @@ mod tests {
                     & (position.piece_kind_bb(PieceKind::Bishop)
                         | position.piece_kind_bb(PieceKind::ProBishop));
                 let steps = tables::step_attacker_zone(king);
-                *dropped += (rooks & !(steps | tables::orthogonal_attacker_zone(king))).count()
-                    as u64
-                    + (bishops & !(steps | tables::diagonal_attacker_zone(king))).count() as u64;
+                let orthogonal = tables::orthogonal_attacker_zone(king);
+                let diagonal = tables::diagonal_attacker_zone(king);
+                *dropped += (rooks & !(steps | orthogonal)).count() as u64
+                    + (bishops & !(steps | diagonal)).count() as u64;
+                // Only the two promoted kinds can land here: a rook, bishop or
+                // lance bearing on a neighbour is in its ray zone by
+                // construction, so the step term is never the only thing
+                // holding one.
+                let dragons = rooks & position.piece_kind_bb(PieceKind::ProRook);
+                let horses = bishops & position.piece_kind_bb(PieceKind::ProBishop);
+                if !((dragons & steps & !orthogonal) | (horses & steps & !diagonal)).is_empty() {
+                    *step_only += 1;
+                }
                 *nodes += 1;
             }
             if depth == 0 {
@@ -967,15 +1000,16 @@ mod tests {
             }
             for mv in position.legal_moves() {
                 position.do_move(mv);
-                walk(position, depth - 1, nodes, dropped);
+                walk(position, depth - 1, nodes, dropped, step_only);
                 position.undo_move(mv);
             }
         }
         let mut nodes = 0;
         let mut dropped = 0;
+        let mut step_only = 0;
         for sfen in CALLBACK_POSITIONS {
             let mut position = position_of(sfen);
-            walk(&mut position, 2, &mut nodes, &mut dropped);
+            walk(&mut position, 2, &mut nodes, &mut dropped, &mut step_only);
         }
         assert!(nodes > 10_000, "test covered only {nodes} nodes");
         // Measured at 0.51 per node over this corpus; the bar is a quarter of
@@ -984,6 +1018,19 @@ mod tests {
         assert!(
             dropped * 8 > nodes,
             "only {dropped} sliders dropped over {nodes} nodes; the filter is barely exercised"
+        );
+        // The same demand `check_info_agrees_with_attackers_to` makes of its
+        // double check and double pin: the configuration that distinguishes
+        // the code from its plausible-looking mutation has to be reached, or
+        // the agreement above is silently about something else. Both halves
+        // are rare — the dragon's is the last fixture's whole reason for
+        // existing, and the horse's occurs twice in the in-check position —
+        // so a fixture list that drifts must fail here rather than quietly
+        // stop covering it.
+        assert!(
+            step_only > 0,
+            "no enemy dragon or horse was ever held by the step term alone; \
+             restricting that term to the non-sliders would pass"
         );
     }
 
