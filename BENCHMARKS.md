@@ -1,10 +1,43 @@
 # Benchmarks
 
-Micro-benchmarks for `shunsai` (criterion) and the committed history of
-results. Method and conditions are defined in [DESIGN.md](./DESIGN.md) §4;
-the cross-engine perft comparison (haitaka / apery_rust / YaneuraOu, ...)
-lives in the local-only `../benchmarks` repository and is not part of this
-suite.
+Everything about measuring `shunsai`: the method, the in-repo criterion suite,
+the fixtures, the committed history, and the cross-engine standing.
+
+The comparison *targets* are pinned submodules in the local-only
+`../benchmarks` repository (see [DESIGN.md](./DESIGN.md) §5); why a given
+result was adopted or rejected is in [DECISIONS.md](./DECISIONS.md).
+
+## Method
+
+- **Metrics**: (1) **perft** (nodes/sec; also a correctness check); (2) **movegen alone** (ns per position); (3) **do/undo throughput**.
+- **Tooling**: `criterion` in-repo; the cross-engine perft harness in `../benchmarks/perft`.
+- **Conditions**: `--release` / `lto = "fat"` / `codegen-units = 1`; same machine; with warm-up; a fixed position set; multiple trials with variance recorded; CPU architecture (x86_64 / aarch64) noted.
+- **Position set (fixed SFEN)**:
+  - initial position
+  - **"matsuri" midgame position** (指し手生成祭り, the standard movegen-benchmark position in the Japanese shogi-dev community; used by YaneuraOu's `bench` / `test genmoves`): `l6nl/5+P1gk/2np1S3/p1p4Pp/3P2Sp1/1PPb2P1P/P5GS1/R8/LN4bKL w GR5pnsg 1`
+  - **maximum-legal-move position**: `R8/2K1S1SSk/4B4/9/9/9/9/9/1L1L1L3 b RBGSNLP3g3n17p 1`
+  - check- and mate-adjacent positions — realized as the in-check subset of the sampled real-game fixture (`movegen/sampled-v1-check`)
+
+### Fairness — normalize every library to the same work
+
+- **Full legal move generation.** Account for pseudo-legal + validation vs fully-legal differences, callback vs `Vec` API differences, and Python-binding boundary costs.
+- **Pawn-drop-mate (打ち歩詰め) exclusion.** Legal movegen must not generate pawn drops that give immediate checkmate. Engines differ here and it is a known cause of perft mismatches; shunsai excludes them, and comparisons must confirm each library does the same.
+- ⚠️ **"Leaf bulk counting" is two conventions, not one, and the difference decides the comparison.** Every engine in the harness bulk-counts at leaf parents, yet they do not do the same work to get the number:
+
+  | convention | how the count is obtained | engines |
+  |---|---|---|
+  | **count-only** | straight off the destination bitboards; **no `Move` is ever constructed** | shunsai (`MoveSet::len()`, two popcounts), haitaka (`PieceMoves::into_iter().len()`) |
+  | **materialize** | build every legal move, take the list's length | YaneuraOu (`MoveList<LEGAL_ALL>`, `source/perft.h`), apery (`MoveList<LegalAll>`), apery_rust (`leaf_mlist.generate::<LegalAllType>`), yasai, rshogi, cshogi, Fairy-Stockfish (`MoveList<LEGAL>`) |
+
+  Count-only is a genuine advantage of the callback API — it is what `MoveSet::len()` is *for* — but it is one **perft collects and a search cannot**, since a search must have the moves. So a count-only number and a materializing number are not comparable, and the gap is not small: measured on shunsai's own drivers, materializing costs **1.5× / 2.9× / 5.6×** on startpos-d5 / matsuri-d3 / maxmoves-d3. The harness records `leaf` per row and carries `shunsai-mat` and `haitaka-mat` columns (the same binaries with `--materialize`), so each pair isolates exactly this difference.
+
+  **Never compare numbers produced under different conventions.** Mixing them is what made the standing unreadable for a week — see [Cross-engine standing](#cross-engine-standing).
+
+### How the C++ engines are measured
+
+YaneuraOu is driven over USI with its built-in **`go perft <d>`** (`Benchmark::perft`), which uses `MoveList<LEGAL_ALL>` and bulk-counts at leaf parents — the same tree under the materializing convention. Its self-reported `Elapsed Time` is an *integer millisecond* count plus a deliberate `+1` (ゼロ割防止), so the harness subtracts the 1 ms and falls back to wall time below a millisecond; charging the raw figure had been costing YaneuraOu up to +10 % on the matsuri cell.
+
+apery ships no perft at all, so it gets a small driver of our own on `MoveList<LegalAll>`. cshogi likewise has none, so we drive its `Board` API from Python — its binding overhead is part of what the "practical stack" comparison measures, and should be reported as such.
 
 ## Running
 
@@ -39,7 +72,7 @@ criterion baselines (`--save-baseline <name>` / `-- --baseline <name>`)
 live under `target/criterion/` and are throwaway, for local A/B comparison
 while developing. The durable record is the [history](#history) below.
 
-Conditions (DESIGN.md §4): release profile with `lto = "fat"` and
+Conditions (see [Method](#method)): release profile with `lto = "fat"` and
 `codegen-units = 1` (already configured), warm-up, a quiet machine, and the
 same machine for comparable numbers — every history entry records CPU, OS,
 rustc, and criterion versions. The full suite takes roughly 3–5 minutes.
@@ -107,9 +140,9 @@ bound is the *count*, not a percentage — the share of runtime it can buy
 rises as the crate gets faster (~0.2 % on the M3 tree where these ids were
 introduced, ~0.5 % at this branch's speed), so quote the allocation counts
 rather than the percentage. The ids are kept as the standing evidence for
-that (see the 2026-07-29 decision-log entry in DESIGN.md, which retracts an
-earlier ad-hoc −7.4 %), and as the baseline a copy-make driver would have to
-beat.
+that (see the 2026-07-29 entry in [DECISIONS.md](./DECISIONS.md), which
+retracts an earlier ad-hoc −7.4 %), and as the baseline a copy-make driver
+would have to beat.
 
 The `-mat` and `-buf` ids separate two things the `-cb`-vs-plain pair had been
 conflating: whether a `Move` is **built** at all, and whether the list it goes
@@ -124,8 +157,8 @@ a search needs the moves. It is also the reason the cross-engine table
 flatters shunsai — YaneuraOu, apery, apery_rust, yasai, rshogi and cshogi all
 count leaf moves by building them, so only haitaka is on the same footing.
 The `-mat` ids exist so the committed history tracks both conventions rather
-than one. See DESIGN.md §4 ("leaf bulk counting is two conventions") and the
-2026-07-30 entry under §6 M5.
+than one. See [Fairness](#fairness--normalize-every-library-to-the-same-work)
+above and [Cross-engine standing](#cross-engine-standing) below.
 
 ## Bench-id stability contract
 
@@ -176,7 +209,7 @@ successful run doubles as a differential test on real games.
 
 A history entry is only worth the machine state during it, and a
 plausible-looking number is not evidence that the machine was quiet — two
-entries in DESIGN.md's decision log were re-run for exactly this reason
+entries in [DECISIONS.md](./DECISIONS.md) were re-run for exactly this reason
 (σ = 46 % on `perft/matsuri/3` once; two whole suite runs discarded another
 time). Neither mean *looked* wrong.
 
@@ -215,6 +248,68 @@ python3 scripts/bench_snapshot.py --note "what changed"
 The script summarizes `target/criterion/` into
 `benches/history/YYYY-MM-DD-<rev>.json` (all ids, error bars, and machine
 meta) and regenerates the table below from all history files. Commit both.
+
+## Cross-engine standing
+
+Run from the local-only `../benchmarks/perft` harness, which shares no code
+with criterion:
+
+```bash
+./perft --measure --repeat 5
+```
+
+Minimum kept, every cell validated against the known node counts (DESIGN.md §6).
+Seconds, lower is better. **Read the `leaf` column** — count-only and
+materializing rows are not comparable (see [Fairness](#fairness--normalize-every-library-to-the-same-work)).
+
+**Current, 2026-08-06** (shunsai rev `2be3a5b`, `results/2026-08-06.json`):
+
+| engine | leaf | startpos d5 | matsuri d3 | maxmoves d3 |
+|---|---|---|---|---|
+| **shunsai** | count-only | **0.060926** | **0.002003** | **0.009771** |
+| haitaka | count-only | 0.076580 | 0.002420 | 0.018260 |
+| haitaka-bulk (control) | count-only | 0.075214 | 0.002379 | 0.017239 |
+| yaneuraou (C++) | materialize | **0.090000** | 0.010000 | 0.082000 |
+| **shunsai-mat** | materialize | 0.094221 | **0.005524** | **0.043669** |
+| apery (C++) | materialize | 0.095169 | 0.009517 | 0.087326 |
+| apery_rust | materialize | 0.100649 | 0.011468 | 0.110096 |
+| haitaka-mat | materialize | 0.103839 | 0.015853 | 0.170039 |
+| yasai 0.5.0 | materialize | 0.132825 | 0.011843 | 0.115836 |
+| rshogi | materialize | 0.186331 | 0.016095 | 0.136277 |
+| cshogi | materialize | 0.208250 | 0.014297 | 0.124539 |
+
+**M5 is met.** On the count-only convention shunsai and haitaka share, shunsai
+is ahead on **all three** — **1.26× / 1.21× / 1.87×**. apery_rust is beaten on
+all three under the materializing convention (1.07× / 2.08× / 2.52×).
+
+**startpos moves from fifth of nine to second**, passing apery, apery_rust and
+haitaka-mat; only YaneuraOu is still ahead. Like-for-like against its wall
+times (0.089742 / 0.010291 / 0.082299): startpos a **1.05× loss**, matsuri
+**1.86×**, maxmoves **1.88×**. Against haitaka-mat: 1.10× / 2.87× / 3.89×.
+
+### How the standing got here
+
+| date | shunsai count-only | shunsai-mat | vs haitaka (count-only) | vs YaneuraOu (materialize) |
+|---|---|---|---|---|
+| 2026-07-30 | 0.075326 / 0.002407 / 0.010716 | — | 1.00× / 0.98× / 1.67× | *not comparable — conventions mixed* |
+| 2026-07-31 | 0.074960 / 0.002407 / 0.010969 | 0.108286 / 0.007764 / 0.066976 | 1.01× / 0.98× / 1.70× | 0.80× / 1.11× / 1.17× |
+| 2026-08-04 | 0.075095 / 0.002503 / 0.010930 | 0.102947 / 0.006144 / 0.043976 | 1.005× / 0.97× / 1.67× | 0.86× / 1.64× / 1.85× |
+| 2026-08-06 | 0.060926 / 0.002003 / 0.009771 | 0.094221 / 0.005524 / 0.043669 | **1.26× / 1.21× / 1.87×** | **0.95× / 1.86× / 1.88×** |
+
+⚠️ **The 2026-07-30 row is why this table has a `leaf` column at all.** It read
+"1.19× / 4.57× / 7.84× faster than YaneuraOu" by comparing a shunsai that counts
+leaves with two popcounts against engines that build every move to count it.
+Those numbers were not wrong, but they were not a statement about move
+generation — and the one comparison in that table that *was* already
+like-for-like is the one against the main rival, haitaka. Established from
+source, not from timings: only haitaka's bulk path (`moves.into_iter().len()`)
+constructs nothing either.
+
+### Reading a harness run
+
+- **The control decides whether a cross-day read is sound.** Every engine other than shunsai should reproduce its previous time; 2026-08-06 held all of them to **2.4 %**, which is what made that read quotable. When `haitaka-bulk` — which this repository does not touch — moved +9.2 % on matsuri (2026-08-07), the run could resolve nothing and the standing was left unchanged.
+- **This harness is the instrument for 15–25 % steps, not for 3 % ones.** Perft trees spend only part of their time in generation, so a small generation change has no business showing here. A change of that size is a criterion-suite result.
+- **Two cells are structurally unreliable.** YaneuraOu's matsuri cell is a ~10 ms measurement on a 1 ms clock, and cshogi's carry Python binding overhead. Hedge them explicitly or quote a range.
 
 ## History
 

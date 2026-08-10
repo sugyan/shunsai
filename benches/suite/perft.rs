@@ -1,4 +1,4 @@
-//! Perft throughput (nodes/sec) on the fixed positions of DESIGN.md §4.
+//! Perft throughput (nodes/sec) on the fixed positions of BENCHMARKS.md.
 
 use std::ops::ControlFlow;
 use std::time::Duration;

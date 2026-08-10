@@ -32,7 +32,7 @@ use crate::position::Position;
 use crate::tables;
 
 /// The most legal moves any shogi position has, which is the move count of
-/// the max-moves fixture in DESIGN.md §4.
+/// the max-moves fixture in BENCHMARKS.md.
 ///
 /// [`Position::legal_moves`] sizes its `Vec` from this so no caller ever pays
 /// a growth realloc — one costs 41.6 ns against the 17.1 ns of the allocation
@@ -102,8 +102,8 @@ impl MoveSet {
     /// exists for callers that own and reuse a sized buffer, where there is
     /// none to avoid. Measured, it was a *per-set* cost paid to remove
     /// nothing, and it made the positions with the smallest sets lose
-    /// outright. Do not add it back without re-measuring; DESIGN.md's
-    /// decision log has the figures.
+    /// outright. Do not add it back without re-measuring; DECISIONS.md
+    /// has the figures.
     #[inline]
     pub fn write_into(self, out: &mut Vec<Move>) {
         match self {
@@ -489,14 +489,14 @@ fn generate_king_moves(
 ///
 /// What such a mistake costs is *one extra generated move*, so perft does see
 /// it — all three deep values reject each of the three sabotages recorded in
-/// DESIGN.md. But only where some position in the tree actually has the
+/// DECISIONS.md. But only where some position in the tree actually has the
 /// omitted piece bearing on a king destination, which is why the narrower
 /// omission of 2026-08-07 (a dragon's slide) slipped past every perft value
 /// and was caught by the `shogi_legality_lite` differential alone. Perft is a
 /// real net here and a coverage-dependent one; the differential is what
 /// closes it.
 ///
-/// A search wanting the opponent's *full* attack map — DESIGN.md's
+/// A search wanting the opponent's *full* attack map — DECISIONS.md's
 /// 2026-07-29 entry names this function as where that would come from —
 /// wants this filter dropped, which is a one-line change and a different
 /// measurement. It is not dropped speculatively.
@@ -520,7 +520,7 @@ fn king_danger(position: &Position, us: Color, king: Square, occupied: Bitboard)
     let mut danger = Bitboard::EMPTY;
     // One dense pass with a mailbox lookup, in the shape of
     // `generate_normal`'s main loop. Walking the 13 piece-kind bitboards
-    // instead was measured and rejected (DESIGN.md decision log).
+    // instead was measured and rejected (DECISIONS.md).
     for square in relevant {
         let piece = position
             .piece_at(square)
@@ -936,7 +936,7 @@ mod tests {
     /// each fixture.
     ///
     /// Deep perft does reject every sabotage of this filter that has been
-    /// tried (DESIGN.md), so it is not the sole net — but it only reports a
+    /// tried (DECISIONS.md), so it is not the sole net — but it only reports a
     /// mistake where the tree happens to contain a position in which the
     /// omitted piece bears on a king destination, which is exactly the
     /// coverage the 2026-08-07 dragon omission fell through. This test does

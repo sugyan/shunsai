@@ -171,7 +171,7 @@ static LANCE_RAYS: [[Bitboard; 81]; 2] = ray_table_both(PAWN_STEPS);
 /// reverse-lookup scans in `movegen` want a specific kind's table for a known
 /// colour, where a two-row table is the better shape. Cost of the duplication
 /// is 40.5 KiB of `.rodata`, which matters only to the deferred
-/// magic-versus-qugiy re-run under cache pressure — see DESIGN.md.
+/// magic-versus-qugiy re-run under cache pressure — see DECISIONS.md.
 static STEP_ATTACKS: [[Bitboard; 81]; 32] = step_attacks_table();
 
 const fn step_attacks_table() -> [[Bitboard; 81]; 32] {

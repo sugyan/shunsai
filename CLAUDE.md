@@ -1,13 +1,21 @@
 # CLAUDE.md — shunsai project instructions
 
-This file defines project rules that every future implementation session (Claude Code) **must follow**. For background and detail, see [DESIGN.md](./DESIGN.md).
+This file defines project rules that every future implementation session (Claude Code) **must follow**.
+
+Background and detail live in three documents, each with one job:
+
+| document | holds | go there when |
+|---|---|---|
+| [DESIGN.md](./DESIGN.md) | design, scope, milestones, licensing policy | you need to know what the crate is and is not |
+| [DECISIONS.md](./DECISIONS.md) | what was decided and **rejected**, what is still open | before proposing an optimization — check it was not already tried |
+| [BENCHMARKS.md](./BENCHMARKS.md) | measurement method, fixtures, every recorded number | before quoting or taking a measurement |
 
 ## Project overview
 
 `shunsai` is a Rust **shogi legal-move-generation engine**. It is the successor to [`sugyan/yasai`](https://github.com/sugyan/yasai), rebuilt from scratch with **speed** as the goal. Fundamental types come from [`shogi_core`](https://github.com/rust-shogi-crates/shogi_core) (MIT).
 
 - **Scope**: movegen + position only. Do not touch the **non-goals** (kifu I/O, evaluation, search, tsume solvers) — they belong in a separate crate that depends on this one.
-- **Who it is for**: shunsai is the foundation for a **search engine, and through it a strong shogi AI**, written as a separate crate. **Perft is the measuring instrument, not the customer.** So when an API, layout or size question comes up, judge it against *a search using this crate*. In particular, an argument of the form "nothing collects these" or "this is free in perft" settles the question only for today's callers — say so explicitly rather than closing the issue. Do not, however, build speculatively for a search that does not exist yet: record the condition and re-measure when it does. That consumer now has a name and a repository — **`rinsai`**, developed separately and depending on *released* versions of this crate, so an API addition it needs is a shunsai release, not a git pin. Requests to add API therefore arrive with an engine phase attached (E0 needs nothing; E1 brings `attackers_to`, staged generation, `gives_check`, null move, exposed `checkers`/`pinned`). See DESIGN.md §1–§2 and the 2026-07-29, 2026-07-31 and 2026-08-04 decision-log entries.
+- **Who it is for**: shunsai is the foundation for a **search engine, and through it a strong shogi AI**, written as a separate crate. **Perft is the measuring instrument, not the customer.** So when an API, layout or size question comes up, judge it against *a search using this crate*. In particular, an argument of the form "nothing collects these" or "this is free in perft" settles the question only for today's callers — say so explicitly rather than closing the issue. Do not, however, build speculatively for a search that does not exist yet: record the condition and re-measure when it does. That consumer now has a name and a repository — **`rinsai`**, developed separately and depending on *released* versions of this crate, so an API addition it needs is a shunsai release, not a git pin. Requests to add API therefore arrive with an engine phase attached (E0 needs nothing; E1 brings `attackers_to`, staged generation, `gives_check`, null move, exposed `checkers`/`pinned`). See DESIGN.md §1–§2 and the 2026-07-29, 2026-07-31 and 2026-08-04 entries in DECISIONS.md.
 - **Approach**: build a simple, correct implementation first (validate with known perft values), then decide the optimization strategy (Qugiy / magic / SIMD, etc.) by benchmarking. **Do not commit to a specific technique up front.**
 
 ## ⚠️ Top rule: licensing (stay permissive, no GPL reuse)
@@ -43,3 +51,20 @@ See "7. Licensing policy" in [DESIGN.md](./DESIGN.md) for the rationale.
 ## Benchmarks
 
 Measure perft / movegen / do-undo with `criterion`. Comparison targets are pinned submodules in `../benchmarks` — a **local-only, unpublished sibling repository** (no remote; not visible from this GitHub repo — see its README when working locally). Goal: **beat haitaka / apery_rust**.
+
+Method, fixtures, how to quiet the machine, and what makes a run recordable are in [BENCHMARKS.md](./BENCHMARKS.md). Read its "Standing rules" counterpart in [DECISIONS.md](./DECISIONS.md) before trusting a measurement — this machine's single-shot timings scatter far enough to invent a result.
+
+## Documentation
+
+Each fact lives in **one** place that can be checked. Keep it that way — prose that nothing verifies goes stale silently, and reviewing it costs the same as reviewing code.
+
+| where | what belongs there |
+|---|---|
+| **Public API doc comments** (`Bitboard`, `MoveSet`, `Position`, ...) | the **contract**: what it returns, what it guarantees, what it does not. This is what `rinsai` reads on docs.rs. No rationale, no history. `src/position.rs` is the model. |
+| **Private implementation comments** | an **invariant you would break by accident**, or a genuinely non-obvious trick (`sliders/qugiy.rs`'s `o - 2r` derivation). Put it next to the code it constrains — nobody opens a separate document while editing. |
+| **Test comments** | what configuration this fixture or assertion **uniquely** covers, in a line or two. Prefer a liveness assertion over a paragraph: an `assert!(reached > 0)` enforces coverage where prose only claims it. |
+| **DECISIONS.md / BENCHMARKS.md / `benches/history/*.json`** | measured figures, what was tried and rejected, open questions, and the story of how a number was obtained. |
+
+**Never put a measured timing or speedup in a code comment.** It is true of one machine on one day, nothing in CI checks it, and it will be wrong before anyone notices. Static sizes are different — keep one when it explains a layout choice (`2.3 KiB, so it stays L1-resident`), drop it when it is just accounting.
+
+Do not narrate history in comments (`used to be`, `it replaces ...`) — git has it. Do not leave instructions for future maintainers that the code cannot enforce (`do not add this back without re-measuring`) — that is DECISIONS.md's job.
