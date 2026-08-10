@@ -4,7 +4,7 @@
 //! (omit `sfen` for the initial position)
 //!
 //! Leaves are bulk-counted at depth 1 (the cross-library comparison
-//! convention from DESIGN.md §4). Two ways of obtaining that count are
+//! convention from BENCHMARKS.md). Two ways of obtaining that count are
 //! implemented, because the engines we compare against do not all do it the
 //! same way — see `perft` and `perft_materialize` below.
 
@@ -16,7 +16,7 @@ use shogi_usi_parser::FromUsi;
 use shunsai::Position;
 
 /// The most legal moves any shogi position has — the count of the max-moves
-/// position in DESIGN.md §4.
+/// position in DESIGN.md §6.
 const MAX_LEGAL_MOVES: usize = 593;
 
 fn perft(position: &mut Position, depth: u32) -> u64 {
@@ -62,7 +62,7 @@ fn perft(position: &mut Position, depth: u32) -> u64 {
 /// building moves is what `MoveSet::len()` is for and is the faster path, but
 /// it is a perft-only advantage: a search must have the moves. So this driver
 /// is the one whose numbers are comparable to the other engines', and the
-/// difference between the two is the size of that advantage (DESIGN.md §4).
+/// difference between the two is the size of that advantage (BENCHMARKS.md).
 ///
 /// One buffer is threaded through the whole tree, and each ply takes a slice
 /// off the end and truncates back on the way out, so the walk allocates
@@ -81,7 +81,7 @@ fn perft_materialize(position: &mut Position, depth: u32, buf: &mut Vec<Move>) -
         // order, but it decides drop-versus-board once per set instead of
         // once per move. The gain sorts by moves per set and is largest on
         // the dense positions; `movegen/*-wi` against `movegen/*-buf` is the
-        // instrument, and DESIGN.md's decision log has the figures.
+        // instrument, and DECISIONS.md has the figures.
         set.write_into(buf);
         ControlFlow::Continue(())
     });

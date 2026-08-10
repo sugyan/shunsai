@@ -4,9 +4,9 @@
 
 `shunsai` is a Rust library for high-speed generation of legal moves in [Shogi](https://en.wikipedia.org/wiki/Shogi). It is the successor to [`sugyan/yasai`](https://github.com/sugyan/yasai) ("Yet Another Shogi library, for AI"), redesigned from the inside out to be one of the fastest shogi move generators in Rust.
 
-> ⚠️ **Status: M4 largely done; M5 met.** Fully legal move generation (including pawn-drop-mate exclusion), validated against known perft values and differential-tested against `shogi_legality_lite`. Magic slider attacks, callback move generation, pin-based legality, an allocation-free pawn-drop-mate test, a king-danger bitboard, `MoveSet::write_into`, a piece-indexed attack dispatch and ray tables for the empty-board sniper scan have each been adopted by measurement against the committed benchmark history (see [BENCHMARKS.md](./BENCHMARKS.md)). Against [haitaka](https://github.com/tofutofu/haitaka) — the main rival, and the only engine measured on the same leaf-counting convention — shunsai is ahead on **all three** fixture positions (1.26× / 1.21× / 1.87×), and apery_rust is beaten on all three as well.
+> ⚠️ **Status: M4 largely done; M5 met.** Fully legal move generation (including pawn-drop-mate exclusion), validated against known perft values and differential-tested against `shogi_legality_lite`. Optimizations are adopted by measurement against the committed benchmark history — including the ones that measured neutral and were kept for other reasons, which [DECISIONS.md](./DECISIONS.md) records as such.
 >
-> The other engines count leaf moves by *building* them where shunsai can count bitboards, so read only the **materializing** convention against them — a search must have the moves, and the count-only comparison flatters shunsai. On that convention shunsai is fastest of all nine on the midgame and max-moves positions (1.86× and 1.88× over YaneuraOu) and **second of nine on the initial position**, 1.05× behind YaneuraOu and ahead of apery. See [DESIGN.md](./DESIGN.md) §4 and §6.
+> Against [haitaka](https://github.com/tofutofu/haitaka) — the main rival, and the only engine measured on the same leaf-counting convention — shunsai is ahead on **all three** fixture positions; apery_rust is beaten on all three too. Against the C++ engines, read only the **materializing** convention, where shunsai is fastest of nine on the midgame and max-moves positions and second on the initial position. Full tables and the convention caveat: [BENCHMARKS.md](./BENCHMARKS.md).
 
 ## Concept
 
@@ -29,7 +29,11 @@ Kifu I/O (SFEN/USI/KIF/CSA), evaluation functions, search, and tsume (mate) solv
 
 ## How it will be built
 
-Rather than committing to a particular optimization up front, shunsai starts with a **simple, correct implementation** (validated against known perft values) and then decides the optimization strategy (Qugiy / magic bitboards / SIMD, etc.) **by benchmarking**. See [DESIGN.md](./DESIGN.md).
+Rather than committing to a particular optimization up front, shunsai starts with a **simple, correct implementation** (validated against known perft values) and then decides the optimization strategy (Qugiy / magic bitboards / SIMD, etc.) **by benchmarking**.
+
+- [DESIGN.md](./DESIGN.md) — the design, scope and licensing policy
+- [DECISIONS.md](./DECISIONS.md) — what was decided and rejected, and what is still open
+- [BENCHMARKS.md](./BENCHMARKS.md) — how measurement is done, and every recorded number
 
 ## License
 

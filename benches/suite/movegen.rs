@@ -1,4 +1,4 @@
-//! `legal_moves()` cost per position: the fixed positions of DESIGN.md §4
+//! `legal_moves()` cost per position: the fixed positions of BENCHMARKS.md
 //! plus the sampled real-game fixture (`benches/positions/sampled-v1.sfen`).
 //!
 //! The plain ids measure the M1 allocating `Vec` API; the `-cb` ids measure

@@ -17,7 +17,7 @@
       "games-v1",
       "sampled-v1"
     ],
-    "note": "check_info's empty-board sniper scan served from ray tables: generation -3.4% on the sampled-v1 real-game fixture, -3.0% on its in-check subset, -0.9..-1.8% on the three fixture positions, and -1.6..-2.3% on the perft trees. Recorded on agreement across four independent runs (42 of 46 ids within 4%) rather than sigma - the ids over the bar drifted monotonically across runs rather than scattering, so the median of the four is what the DESIGN.md entry quotes. Control: all 11 ids this change cannot reach (internals/*, do_undo) reproduce their 2026-08-06 figures within +-1.7%, which is what makes the cross-day read sound."
+    "note": "check_info's empty-board sniper scan served from ray tables: generation -3.4% on the sampled-v1 real-game fixture, -3.0% on its in-check subset, -0.9..-1.8% on the three fixture positions, and -1.6..-2.3% on the perft trees. Recorded on agreement across four independent runs (42 of 46 ids within 4%) rather than sigma - the ids over the bar drifted monotonically across runs rather than scattering, so the median of the four is what the DECISIONS.md entry quotes. Control: all 11 ids this change cannot reach (internals/*, do_undo) reproduce their 2026-08-06 figures within +-1.7%, which is what makes the cross-day read sound."
   },
   "results": {
     "do_undo/games-v1": {

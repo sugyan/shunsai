@@ -17,7 +17,7 @@
       "games-v1",
       "sampled-v1"
     ],
-    "note": "MoveSet::write_into + legal_moves() routed through it; perft/matsuri-cb/3 unstable under whole-suite conditions (sigma 27%, cause unresolved) - its series is not comparable with 2026-08-03, see DESIGN.md; the other 45 ids are sigma <= 4%"
+    "note": "MoveSet::write_into + legal_moves() routed through it; perft/matsuri-cb/3 unstable under whole-suite conditions (sigma 27%, cause unresolved) - its series is not comparable with 2026-08-03, see DECISIONS.md; the other 45 ids are sigma <= 4%"
   },
   "results": {
     "do_undo/games-v1": {
