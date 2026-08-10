@@ -27,6 +27,10 @@ jobs:
       # our own generator's output" stays a checked property rather than a
       # claim. Whether each multiplier *works* is asserted at compile time.
       - run: cargo run --example gen_magics -- --check
+      # Doc comments are the one thing a comments-only change can break, and
+      # rustdoc is the only tool that notices. `--all-features` so the
+      # feature-gated modules are documented too.
+      - run: RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --document-private-items --all-features
 
   # Deep perft (initial position depth 5/6) is #[ignore]d in the normal run.
   perft-deep:

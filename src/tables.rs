@@ -1,8 +1,7 @@
-//! Attack tables and naive slider attacks.
+//! Const attack, ray, between, line and zone tables.
 //!
-//! Step-piece attacks are const-evaluated per square; slider attacks walk
-//! rays square by square. Replacing the latter with Qugiy/magic
-//! implementations is a later, benchmark-driven decision.
+//! Slider attacks are not here — [`crate::sliders`] owns them, and this
+//! module re-exports whichever backend is live.
 //!
 //! The table builders work on raw [`Square::array_index`] arithmetic rather
 //! than [`Square::shift`], which is not a `const fn`. Every const table is
@@ -137,13 +136,12 @@ static DIAGONAL_ATTACKS: [Bitboard; 81] = step_table(&DIAGONAL_STEPS);
 
 /// Slider attacks on an **empty** board, which depend only on the origin.
 ///
-/// The one caller is the sniper scan in `check_info`, which asks "which
-/// enemy sliders would reach the king if nothing were in the way" and then
-/// counts blockers. Nothing there varies with occupancy, so going through
-/// the live slider backend — for the rook a magic multiply plus a shift and
-/// two loads for the rank, plus the file table; for the bishop two such
-/// lookups — is paying a general mechanism for a constant. These three
-/// tables are ~5.1 KiB total against the backend's ~486 KiB, and the guard
+/// The one caller is the sniper scan in `check_info`, which asks "which enemy
+/// sliders would reach the king if nothing were in the way" and then counts
+/// blockers. Nothing there varies with occupancy, so going through the live
+/// slider backend pays a general mechanism for a constant. All three
+/// together are ~5 KiB against the magic backend's ~486 KiB, which is what
+/// makes carrying them alongside it worth it. The guard
 /// `empty_board_rays_match_the_naive_backend` holds each entry to
 /// `sliders::naive` over all 81 squares.
 static ROOK_RAYS: [Bitboard; 81] = ray_table(&ORTHOGONAL_STEPS);
@@ -169,9 +167,10 @@ static LANCE_RAYS: [[Bitboard; 81]; 2] = ray_table_both(PAWN_STEPS);
 ///
 /// This duplicates the per-kind tables above rather than replacing them: the
 /// reverse-lookup scans in `movegen` want a specific kind's table for a known
-/// colour, where a two-row table is the better shape. Cost of the duplication
-/// is 40.5 KiB of `.rodata`, which matters only to the deferred
-/// magic-versus-qugiy re-run under cache pressure — see DECISIONS.md.
+/// colour, where a two-row table is the better shape. The duplication costs
+/// 40.5 KiB of `.rodata` — the budget any further piece-indexed table is
+/// spent against, and the input to the deferred magic-versus-qugiy re-run
+/// under cache pressure (DECISIONS.md).
 static STEP_ATTACKS: [[Bitboard; 81]; 32] = step_attacks_table();
 
 const fn step_attacks_table() -> [[Bitboard; 81]; 32] {
@@ -232,8 +231,7 @@ static STEP_ATTACKER_ZONE: [Bitboard; 81] = box_table(2, 3);
 /// on an empty board. An empty-board ray is a superset of the real one —
 /// occupancy only ever shortens it — so a slider outside this set provably
 /// bears on no king destination whatever the board looks like, which is the
-/// only direction [`king_danger`](crate::movegen) may err in. It is not the
-/// exact set, and does not need to be.
+/// only direction [`king_danger`](crate::movegen) may err in.
 const fn slider_attacker_zone(steps: &[(i8, i8)]) -> [Bitboard; 81] {
     let rays = ray_table(steps);
     let mut table = [Bitboard::EMPTY; 81];
@@ -323,14 +321,14 @@ pub(crate) fn king_attacks(square: Square) -> Bitboard {
 /// Where a step piece has to stand to attack a neighbour of `king`; see
 /// [`STEP_ATTACKER_ZONE`].
 ///
-/// **This covers the two promoted sliders' step halves as well**, and that is
-/// load-bearing: a horse's orthogonal sidesteps and a dragon's diagonal ones
-/// do not lie on the piece's own rays, so
-/// [`orthogonal_attacker_zone`] / [`diagonal_attacker_zone`] miss them. Both
-/// reach only a neighbour of a neighbour, i.e. two steps from the king, which
-/// the two-file-by-three-rank box contains. `king_danger` therefore keeps this
-/// term for *every* enemy piece rather than only the non-sliders, and
-/// `slider_attacker_zones_cover_every_slider` is what holds the pair together.
+/// ⚠️ **This covers the two promoted sliders' step halves as well**, and that
+/// is load-bearing: a horse's orthogonal sidesteps and a dragon's diagonal
+/// ones do not lie on the piece's own rays, so [`orthogonal_attacker_zone`] /
+/// [`diagonal_attacker_zone`] miss them. Both reach only a neighbour of a
+/// neighbour, which the two-file-by-three-rank box contains. `king_danger`
+/// therefore keeps this term for *every* enemy piece rather than only the
+/// non-sliders, and `slider_attacker_zones_cover_every_slider` holds the pair
+/// together.
 #[inline(always)]
 pub(crate) fn step_attacker_zone(king: Square) -> Bitboard {
     STEP_ATTACKER_ZONE[king.array_index()]
@@ -481,10 +479,9 @@ static LAST_TWO_RANKS: [Bitboard; 2] = relative_rank_masks(2);
 ///
 /// Promotion is legal when the move *starts or ends* in the zone, which is
 /// two conditions on one set of destinations: a piece already inside the zone
-/// may promote everywhere, and one outside it only on the zone itself. That is
-/// a per-origin fact, not a per-destination one, so it is baked per origin
-/// here rather than tested per set — `emit_normal` used to load the zone and
-/// then branch on `zone.contains(from)`.
+/// may promote everywhere, and one outside it only on the zone itself. That
+/// is a per-origin fact, not a per-destination one, so it is baked per origin
+/// here rather than tested per set.
 static PROMOTION_MASK: [[Bitboard; 81]; 2] = promotion_mask_table();
 
 const fn promotion_mask_table() -> [[Bitboard; 81]; 2] {
@@ -526,9 +523,9 @@ pub(crate) const PROMOTABLE_KINDS: u32 = (1 << PieceKind::Pawn as u32)
 /// have no move left, so promotion is compulsory. Empty for the pieces that
 /// are never forced.
 ///
-/// Indexed by piece for the same reason as [`STEP_ATTACKS`]: it replaces a
-/// `match` on the kind followed by a colour-indexed load, in a function that
-/// runs once per generated set.
+/// Indexed by piece for the same reason as [`STEP_ATTACKS`] — one load
+/// instead of a `match` on the kind plus a colour-indexed load — in a
+/// function that runs once per generated set.
 static FORCED_PROMOTION: [Bitboard; 32] = forced_promotion_table();
 
 const fn forced_promotion_table() -> [Bitboard; 32] {
@@ -558,14 +555,12 @@ pub(crate) use crate::sliders::lance_attacks;
 /// sliders only).
 ///
 /// Called once per origin in generation's dense pass and once per relevant
-/// enemy piece in [`king_danger`](crate::movegen), so the *dispatch* is on the
-/// hot path in its own right. It used to be a ten-arm `match` on
-/// [`PieceKind`], which LLVM lowers to a jump table: an indirect branch whose
-/// target is whatever piece the mailbox happened to yield, and therefore
-/// poorly predicted. Nine of the fourteen kinds want nothing but a table
-/// lookup, so those are folded into one [`STEP_ATTACKS`] row and reached
-/// through a single well-predicted *direct* branch instead. Only the five
-/// slider kinds still dispatch, and there are few of them per node.
+/// enemy piece in [`king_danger`](crate::movegen), so the *dispatch* is on
+/// the hot path in its own right. Nine of the fourteen kinds want nothing but
+/// a table lookup, so those are folded into one [`STEP_ATTACKS`] row reached
+/// through a single well-predicted *direct* branch, rather than the jump
+/// table a `match` on [`PieceKind`] would lower to. Only the five slider
+/// kinds still dispatch, and there are few of them per node.
 #[inline]
 pub(crate) fn attacks_of(piece: Piece, square: Square, occupied: Bitboard) -> Bitboard {
     let index = (piece.as_u8() & 31) as usize;
@@ -1086,10 +1081,10 @@ mod tests {
         }
     }
 
-    /// The two promotion tables replaced code that read the rules directly —
-    /// `piece_kind.promote().is_some()`, `zone.contains(from)`, and a `match`
-    /// on the kind — so hold each to the rule it encodes, over every piece and
-    /// square.
+    /// The promotion tables bake rules that `emit_normal` would otherwise read
+    /// directly (`piece_kind.promote().is_some()`, `zone.contains(from)`, a
+    /// `match` on the kind), so hold each to the rule it encodes, over every
+    /// piece and square.
     ///
     /// `PROMOTABLE_KINDS` against `PieceKind::promote()` catches a wrong bit
     /// in the mask; `promotion_mask` against the start-or-end-in-the-zone rule
@@ -1133,9 +1128,10 @@ mod tests {
         }
     }
 
-    /// `attacks_of` no longer dispatches per kind, so hold the folded form to
-    /// the per-kind tables it replaced — over **every** piece and square, on
-    /// an empty board and on populated ones.
+    /// `attacks_of` reaches the nine non-slider kinds through one indexed
+    /// load instead of a per-kind `match`, so hold it to the per-kind tables
+    /// over **every** piece and square, on an empty board and on populated
+    /// ones.
     ///
     /// This is the test that catches a mis-filed [`STEP_ATTACKS`] row (a gold
     /// row under `ProSilver`, a colour swapped, `orthogonal` and `diagonal`
