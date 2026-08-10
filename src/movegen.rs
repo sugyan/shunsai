@@ -30,7 +30,7 @@ use crate::position::Position;
 use crate::tables;
 
 /// The most legal moves any shogi position has, which is the move count of
-/// the max-moves fixture in BENCHMARKS.md.
+/// the max-moves fixture in DESIGN.md §6.
 ///
 /// [`Position::legal_moves`] sizes its `Vec` from this so no caller pays a
 /// growth realloc; the drop-heavy positions were paying three of them.

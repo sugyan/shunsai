@@ -53,15 +53,16 @@ src/lib.rs
 src/bitboard.rs   # the u128 bitboard type
 src/sliders.rs    # slider attacks — the M4 backend swap boundary
 src/sliders/      # magic (live) / qugiy / naive (oracle) backends
-src/tables.rs     # const attack, between, line and zone tables
+src/tables.rs     # const attack, ray, between, line and zone tables
 src/zobrist.rs
 src/position.rs   # Position: do/undo, Zobrist
-src/movegen.rs    # callback generation + legal_moves wrapper
+src/movegen.rs    # callback generation, legality, legal_moves wrapper
+src/internals.rs  # crate internals re-exposed to benches (feature-gated)
 examples/perft.rs
 benches/          # movegen / perft / do_undo
 ```
 
-The **swap boundary** for slider techniques is the attack-function signatures in `sliders.rs`, not a trait over `Bitboard`; every backend is always compiled so the tests can hold each to the naive oracle. See the 2026-07-23 entry in [DECISIONS.md](./DECISIONS.md).
+The **swap boundary** for slider techniques is the attack-function signatures in `sliders.rs`, not a trait over `Bitboard`. `magic` and `qugiy` are always compiled; `naive` is the oracle the tests hold the others to, and is compiled under `cfg(any(test, feature = "slider-naive", feature = "bench-internals"))`. See the 2026-07-23 entry in [DECISIONS.md](./DECISIONS.md).
 
 ## 4. Benchmarking method
 
@@ -71,10 +72,9 @@ conventions**, count-only and materializing, which decide the comparison), the
 in-repo criterion suite, and the recorded history all live in
 **[BENCHMARKS.md](./BENCHMARKS.md)**.
 
-Two rules from there that constrain design work, not just measurement:
-
-- **Never compare numbers produced under different leaf conventions.** Count-only is a genuine advantage of the callback API, but it is one perft collects and a search cannot.
-- **Adopt by measurement, one candidate per change.** Batching optimizations destroys the attribution that makes the history readable.
+One rule from there constrains design work, not just measurement: **never compare
+numbers produced under different leaf conventions.** Count-only is a genuine advantage
+of the callback API, but it is one perft collects and a search cannot.
 
 ## 5. Comparison targets
 
@@ -101,20 +101,15 @@ Correctness oracle (not a speed target): [`shogi_legality_lite`](https://github.
 - **M1 (done)**: **simple, correct implementation** (Position + naive movegen) matching known perft values.
 - **M2 (done)**: benchmark harness (criterion + `../benchmarks` integration); record the naive implementation as baseline. In-repo suite documented in [BENCHMARKS.md](./BENCHMARKS.md); cross-engine baseline recorded 2026-07-23 in the local benchmarks repository (§5).
 - **M3 (done)**: move-generation API refined into the callback form — `Position::generate_moves(|MoveSet| -> ControlFlow<()>)`, with `legal_moves()` kept as the allocating wrapper. Measured under the append-only `-cb` bench ids beside the `Vec` ones.
-- **M4 (in progress)**: evaluate optimization candidates and **adopt by benchmark comparison**. Adopted so far:
-  - magic slider attacks (over Qugiy-style arithmetic and the naive walk)
-  - const attack tables (measured neutral, kept as a simplification)
-  - pin-based legality — checkers and pinned computed once per position
-  - one king-danger bitboard per node instead of one attack test per destination, with its scan filtered to pieces that could bear on the king's neighbourhood
-  - `MoveSet::write_into` — drop-versus-board decided once per set
-  - piece-indexed `attacks_of` dispatch and per-origin promotion
-  - ray tables for `check_info`'s empty-board sniper scan
-
-  Rejected candidates, the open list, and the numbers behind each adoption are in [DECISIONS.md](./DECISIONS.md). What remains is profiling-led rather than guessed.
-- **M5 (met 2026-08-06)**: numerically confirm we **beat** haitaka / apery_rust. **Both are beaten on all three fixture positions.** Against haitaka — the only engine sharing shunsai's count-only leaf convention — 1.26× / 1.21× / 1.87×. Against the C++ engines, read only the materializing convention, where shunsai is fastest of nine on the midgame and max-moves positions and second on the initial position. Full tables, every generation of them, are in [BENCHMARKS.md](./BENCHMARKS.md).
+- **M4 (in progress)**: evaluate optimization candidates and **adopt by benchmark comparison**. Every adoption, every rejected candidate, and the open list are in [DECISIONS.md](./DECISIONS.md); the numbers are in [BENCHMARKS.md](./BENCHMARKS.md) and `benches/history/*.json`. What remains is profiling-led rather than guessed.
+- **M5 (met 2026-08-06)**: numerically confirm we **beat** haitaka / apery_rust on perft. Met — both are ahead-of on all three fixture positions. The criterion is a like-for-like comparison, so it is read on the **materializing** convention against every engine except haitaka, which is the one that shares shunsai's count-only convention. Standing and tables: [BENCHMARKS.md](./BENCHMARKS.md).
 - **M6 (demoted 2026-07-29)**: switch `tsumeshogi-solver` to depend on `shunsai`; validate the migration. Still worth doing as a real-world check that the API survives contact with a consumer, but it is no longer what the project is for — see §1.
 - **M7 — the actual destination**: a **search engine** on top of shunsai, in its own crate, and from there a strong AI. Deliberately not scoped in this document (§2 keeps this crate movegen-only), but it is what M4 and M5 are *for*. Named **`rinsai`**, one new repository, depending on *released* versions of this crate. Its staged plan (E0–E6, NNUE + αβ first) and the API additions each phase needs are in [DECISIONS.md](./DECISIONS.md) (2026-07-31, 2026-08-04).
-- **Before E0**: publish v0.1.0 on crates.io (`keywords = ["shogi","move-generation","bitboard","game","usi"]`, `categories = ["game-development","algorithms"]`). Not optional sequencing — `rinsai` depends on released versions rather than a git pin, so the release is what E0 builds against.
+- **Before E0**: publish v0.1.0 on crates.io. Not optional sequencing — `rinsai` depends on released versions rather than a git pin, so the release is what E0 builds against. The release is also the **last point at which an API break is free**, so it gates more than packaging:
+  - ⏳ decide the `states: Vec<State>` move out of `Position` ([DECISIONS.md](./DECISIONS.md) Open questions) — after v0.1.0 it is a semver break against `rinsai`
+  - run the **provenance scan** (§7)
+  - decide what the published tarball contains: `Cargo.toml` has no `include`, so it currently ships every document and `benches/history/*.json`
+  - `keywords = ["shogi","move-generation","bitboard","game","usi"]`, `categories = ["game-development","algorithms"]` (already in `Cargo.toml`)
 
 ### Known perft values (correctness checks for M1/M4)
 
@@ -186,4 +181,5 @@ Most of the code will be written by AI (Claude Code). The question is not "was G
   - If a blocking bug or missing capability appears, it is MIT: forking (or vendoring the needed types) is an acceptable fallback that preserves the "swap the dependency" migration story for `tsumeshogi-solver`.
 - **Perft-convention mismatches can fake regressions or wins.** Pawn-drop-mate handling and leaf bulk-counting differ across libraries (see [BENCHMARKS.md](./BENCHMARKS.md) and §6). Every cross-library number must state the convention used; never compare numbers produced under different conventions.
 - **Benchmark-target drift.** Comparison targets are pinned submodules in `../benchmarks`; results are only comparable against a recorded pin (see §5 pinning policy). Active upstreams (YaneuraOu, cshogi, rshogi, Fairy-Stockfish) will move — bump deliberately and re-baseline.
-- **Feasibility of the "beat haitaka / apery_rust" goal** (assessed 2026-07-22): haitaka self-describes as experimental (no engine adoption yet, no hand-written SIMD); yasai demonstrated that hand-tuned SIMD is competitive with apery_rust. Combining haitaka-style const tables / Qugiy with yasai-style SIMD (reimplemented, per §7) leaves clear headroom, so the goal is considered achievable — but it is validated empirically at M5, not assumed.
+- **Feasibility of the "beat haitaka / apery_rust" goal** (assessed 2026-07-22): haitaka self-describes as experimental (no engine adoption yet, tuned and tested mainly on Apple M2, no hand-written SIMD); yasai demonstrated that hand-tuned SIMD is competitive with apery_rust. Combining haitaka-style const tables / Qugiy with yasai-style SIMD (reimplemented, per §7) leaves clear headroom, so the goal is considered achievable — but it is validated empirically at M5, not assumed.
+  - ⚠️ **Every recorded win over haitaka is on Apple Silicon, which is the family haitaka was tuned for.** The x86-64 re-run scheduled for engine phase E4 (see [DECISIONS.md](./DECISIONS.md), 2026-07-31) is where that caveat gets tested; state it whenever the M5 result is quoted outside this repository.
