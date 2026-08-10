@@ -15,10 +15,8 @@
 //! - under a single check, every non-king move is masked to capturing the
 //!   checker or interposing, and a double check leaves only king moves.
 //!
-//! The king is what the test is about, so it is the one piece left, and it
-//! is decided by a single bitboard of the squares the opponent attacks
-//! *around it* — see [`king_danger`], which is deliberately a partial attack
-//! map — rather than one attack test per destination.
+//! The king is the one piece left, since it is what the test is about, and
+//! [`king_danger`] decides all of its destinations with a single bitboard.
 //!
 //! Pawn-drop-mate (打ち歩詰め) is excluded by simulating the drop and asking
 //! whether the opponent has any reply at all.
@@ -34,9 +32,8 @@ use crate::tables;
 /// The most legal moves any shogi position has, which is the move count of
 /// the max-moves fixture in BENCHMARKS.md.
 ///
-/// [`Position::legal_moves`] sizes its `Vec` from this so no caller ever pays
-/// a growth realloc — one costs 41.6 ns against the 17.1 ns of the allocation
-/// itself, and the drop-heavy positions were paying three of them.
+/// [`Position::legal_moves`] sizes its `Vec` from this so no caller pays a
+/// growth realloc; the drop-heavy positions were paying three of them.
 const MAX_LEGAL_MOVES: usize = 593;
 
 /// A group of legal moves that share an origin, as handed to
@@ -84,26 +81,13 @@ impl MoveSet {
 
     /// Appends every [`Move`] of this set to `out`.
     ///
-    /// Same result as `out.extend(self)`, and the reason to prefer it is
-    /// that [`MoveSetIter::next`] has to re-decide per move what this
-    /// decides once. It matches on drop-versus-board every call, and on the
-    /// board path it probes `promotions` first and falls through, so **every
-    /// non-promoting move pays a failed pop** — at the initial position,
-    /// where nothing can promote, that is every move. Here each destination
-    /// set gets its own loop with `promote` as a loop constant, and the
-    /// drop/board decision is made once.
+    /// Same result as `out.extend(self)`, but the drop-versus-board and
+    /// promote decisions are made once per set rather than once per move,
+    /// which [`MoveSetIter`] cannot do. Prefer the iterator for consuming
+    /// lazily or stopping early, and this for filling a buffer.
     ///
-    /// The iterator stays because it is the right shape for callers that
-    /// consume moves lazily or stop early; this is for the caller that wants
-    /// the whole set in a buffer, which is what a search does.
-    ///
-    /// Deliberately no `reserve`: `Vec::push` checks capacity per element
-    /// either way, so reserving only avoids a reallocation — and this method
-    /// exists for callers that own and reuse a sized buffer, where there is
-    /// none to avoid. Measured, it was a *per-set* cost paid to remove
-    /// nothing, and it made the positions with the smallest sets lose
-    /// outright. Do not add it back without re-measuring; DECISIONS.md
-    /// has the figures.
+    /// Deliberately does not `reserve`: it is meant for callers that own and
+    /// reuse a sized buffer, where there is no reallocation to avoid.
     #[inline]
     pub fn write_into(self, out: &mut Vec<Move>) {
         match self {
@@ -237,13 +221,6 @@ impl Position {
         let mut moves = Vec::with_capacity(MAX_LEGAL_MOVES);
         // The listener never breaks, so the walk is always `Continue`.
         let _ = self.generate_moves(|set| {
-            // `write_into` rather than the iterator: this is exactly the
-            // caller it is for — the whole set, eagerly, into a buffer — so
-            // the "iterator for lazy consumption" argument does not apply
-            // here. (It replaces a plain push loop that was itself there to
-            // dodge `extend`'s per-element length re-check, `MoveSetIter`
-            // not being `TrustedLen`; `write_into` removes the per-move
-            // drop/board decision on top of that.)
             set.write_into(&mut moves);
             ControlFlow::Continue(())
         });
@@ -333,14 +310,10 @@ pub(crate) fn generate_legal(
 /// Splits the destinations of one piece into its promoting and
 /// non-promoting sets and hands them to `listener`.
 ///
-/// Runs once per generated set, so what it costs is a *per-set* cost — the
-/// side of the ledger `MoveSet::write_into` did not touch, and the one the
-/// initial position is dominated by (30 moves out of ~20 origins). Both
-/// decisions it makes are therefore table lookups keyed on things already in
-/// hand: whether the piece can promote at all is a bitmask test on the kind
-/// discriminant, and *where* it may promote is baked per origin in
-/// [`tables::promotion_mask`], which used to be a zone load plus a
-/// `zone.contains(from)` branch.
+/// Runs once per generated set, so both decisions are table lookups keyed on
+/// what is already in hand: whether the piece can promote at all is a bitmask
+/// test on the kind discriminant, and *where* it may promote is baked per
+/// origin in [`tables::promotion_mask`].
 #[inline]
 fn emit_normal(
     us: Color,
@@ -419,6 +392,10 @@ fn generate_normal(
 
 /// The king is the one piece whose moves are not legal by construction, and
 /// [`king_danger`] decides all of them at once.
+///
+/// The danger bitboard is built here rather than in [`generate_legal`] so a
+/// walk that stops early — [`Position::has_legal_moves`], and with it the
+/// pawn-drop-mate test — usually never pays for it.
 fn generate_king_moves(
     position: &Position,
     us: Color,
@@ -428,11 +405,7 @@ fn generate_king_moves(
     listener: &mut impl FnMut(MoveSet) -> ControlFlow<()>,
 ) -> ControlFlow<()> {
     let candidates = tables::king_attacks(king) & targets;
-    // A king boxed in by its own pieces is common enough to be worth the
-    // test, and the danger bitboard is built here rather than in
-    // `generate_legal` for the same reason: a walk that stops early — as
-    // `has_legal_moves` does, and with it the pawn-drop-mate test — usually
-    // finds its move in `generate_normal` and never pays for this at all.
+    // A king boxed in by its own pieces is common enough to be worth the test.
     if candidates.is_empty() {
         return ControlFlow::Continue(());
     }
@@ -445,10 +418,8 @@ fn generate_king_moves(
 /// out of `occupied`.
 ///
 /// One such bitboard decides every king destination at once, and is exactly
-/// equivalent to testing each destination on its own post-move occupancy,
-/// which is what generation used to do (up to eight `attackers_to` calls per
-/// node against this one pass over the opponent's pieces). Three properties
-/// make the destinations collapse into a single mask:
+/// equivalent to testing each destination on its own post-move occupancy.
+/// Three properties make the destinations collapse into a single mask:
 ///
 /// - lifting the king out of `occupied` is *required*, or the king could
 ///   retreat along a checking ray while still blocking it with the body it
@@ -460,46 +431,26 @@ fn generate_king_moves(
 ///   *between*;
 /// - removing a captured piece cannot change it either: no shogi piece
 ///   attacks the square it stands on, so the piece being captured was never
-///   among that square's attackers. Its own attacks change, but those are
-///   about other squares.
+///   among that square's attackers.
 ///
 /// **The result is only valid on the king's own neighbours**, which is all
-/// [`generate_king_moves`] masks with. The whole set would have to come from
-/// every enemy piece, and one pass over all ~20 of them is a *fixed* cost
-/// where the test it replaces was paid per candidate square — at the initial
-/// position the king has three, and paying for twenty measured +15 % on
-/// `perft/startpos-cb/4`.
+/// [`generate_king_moves`] masks with. Only attacks landing there can survive
+/// the mask, so every enemy piece is filtered on where it stands before its
+/// attack set is built. A slider is *not* exempt: reaching from anywhere is
+/// not the same as reaching from anywhere *to here*, and the squares a rook
+/// or bishop can bear on a king neighbour from are as fixed by the king
+/// square as a knight's are — [`tables::orthogonal_attacker_zone`] /
+/// [`tables::diagonal_attacker_zone`].
 ///
-/// So only attacks landing next to the king can survive the mask, and every
-/// enemy piece is filtered on where it stands before its attack set is ever
-/// built. A slider is *not* exempt from that: reaching from anywhere is not
-/// the same as reaching from anywhere *to here*, and the squares a rook or a
-/// bishop can bear on a king neighbour from are as fixed by the king square
-/// as a knight's are — the union, over the eight neighbours, of the rays that
-/// reach each one on an empty board (`tables::orthogonal_attacker_zone` /
-/// `diagonal_attacker_zone`). Treating sliders as unfilterable is what this
-/// loop used to do, and on the initial position it walked four enemy sliders
-/// that could not touch the king's neighbourhood at all.
+/// ⚠️ **The filter may only ever be a *superset* of what can attack**:
+/// under-report danger and a king move that walks into check becomes legal.
+/// The empty-board rays give that direction for free, since occupancy only
+/// ever shortens a ray, and `slider_attacker_zones_cover_every_slider` holds
+/// the geometry to [`tables::attacks_of`] itself.
 ///
-/// The filter may only ever be a *superset* of what can attack: under-report
-/// danger and a king move that walks into check becomes legal. The
-/// empty-board rays give that direction for free, since occupancy only ever
-/// shortens a ray, and `slider_attacker_zones_cover_every_slider` holds the
-/// geometry to `attacks_of` itself.
-///
-/// What such a mistake costs is *one extra generated move*, so perft does see
-/// it — all three deep values reject each of the three sabotages recorded in
-/// DECISIONS.md. But only where some position in the tree actually has the
-/// omitted piece bearing on a king destination, which is why the narrower
-/// omission of 2026-08-07 (a dragon's slide) slipped past every perft value
-/// and was caught by the `shogi_legality_lite` differential alone. Perft is a
-/// real net here and a coverage-dependent one; the differential is what
-/// closes it.
-///
-/// A search wanting the opponent's *full* attack map — DECISIONS.md's
-/// 2026-07-29 entry names this function as where that would come from —
-/// wants this filter dropped, which is a one-line change and a different
-/// measurement. It is not dropped speculatively.
+/// A search wanting the opponent's *full* attack map wants this filter
+/// dropped, which is a one-line change and a different measurement. It is not
+/// dropped speculatively — see DECISIONS.md.
 fn king_danger(position: &Position, us: Color, king: Square, occupied: Bitboard) -> Bitboard {
     let occupied = occupied ^ Bitboard::single(king);
     let rooks = position.piece_kind_bb(PieceKind::Rook)
@@ -509,18 +460,16 @@ fn king_danger(position: &Position, us: Color, king: Square, occupied: Bitboard)
         | position.piece_kind_bb(PieceKind::Lance);
     let bishops =
         position.piece_kind_bb(PieceKind::Bishop) | position.piece_kind_bb(PieceKind::ProBishop);
-    // The step term applies to *every* enemy piece, not only the non-sliders:
-    // it is what covers a horse's orthogonal sidesteps and a dragon's
-    // diagonal ones, which lie on neither piece's rays. Dropping it looks
-    // like tidying and is a silent bug — see `tables::step_attacker_zone`.
+    // ⚠️ The step term applies to *every* enemy piece, not only the
+    // non-sliders: it is what covers a horse's orthogonal sidesteps and a
+    // dragon's diagonal ones, which lie on neither piece's rays. Restricting
+    // it to the non-sliders looks like tidying and is a silent bug — see
+    // `tables::step_attacker_zone`.
     let relevant = position.player_bb(us.flip())
         & (tables::step_attacker_zone(king)
             | (rooks & tables::orthogonal_attacker_zone(king))
             | (bishops & tables::diagonal_attacker_zone(king)));
     let mut danger = Bitboard::EMPTY;
-    // One dense pass with a mailbox lookup, in the shape of
-    // `generate_normal`'s main loop. Walking the 13 piece-kind bitboards
-    // instead was measured and rejected (DECISIONS.md).
     for square in relevant {
         let piece = position
             .piece_at(square)
@@ -558,12 +507,10 @@ impl CheckInfo {
 ///   so moving it off the line would expose it: a pin;
 /// - **two or more** — neither, and moving one still leaves the other.
 ///
-/// Computing them separately meant asking the same three slider tables twice
-/// per node, once against the real occupancy for the checkers and once
-/// against an empty board for the pins. The empty-board pass subsumes the
-/// other: a slider on `s` attacks the king through `occupied` exactly when
-/// `s` is on a slider line from the king *and* `between(king, s)` is clear,
-/// which is the zero-blocker case above.
+/// The empty-board pass subsumes a separate checker scan: a slider on `s`
+/// attacks the king through `occupied` exactly when `s` is on a slider line
+/// from the king *and* `between(king, s)` is clear, which is the zero-blocker
+/// case above.
 ///
 /// A dragon's or horse's one-step sidesteps can never pin — nothing fits
 /// between them and the king — so they are left to the step lookups below,
@@ -579,10 +526,9 @@ fn check_info(position: &Position, us: Color, king: Square, occupied: Bitboard) 
     let lances = position.piece_kind_bb(PieceKind::Lance) & their;
 
     // All three are `{rook,bishop,lance}_attacks(.., EMPTY)`. With no
-    // occupancy to consult they are fixed by the king square alone — by the
-    // king square *and* `us` for the lance, which only attacks forwards — so
-    // each is one load rather than a magic multiply-shift-and-two-loads;
-    // see [`tables::rook_rays`].
+    // occupancy to consult they are fixed by the king square alone — and by
+    // `us` for the lance, which only attacks forwards — so each is one load
+    // rather than a trip through the slider backend.
     let snipers = (tables::rook_rays(king) & rooks)
         | (tables::bishop_rays(king) & bishops)
         // A lance only attacks forwards, so the squares it could pin from
@@ -704,8 +650,8 @@ fn generate_drops(
 /// opponent cannot block and no recursive pawn-drop arises.
 ///
 /// [`Position::with_drop`] rather than clone-and-`do_move`: the simulated
-/// position is thrown away, so it does not need an undo history, and
-/// carrying one made this the only allocating step in move generation.
+/// position is thrown away, so it needs no undo history — and carrying one
+/// made this the only allocating step in move generation.
 fn is_pawn_drop_mate(position: &Position, piece: Piece, to: Square) -> bool {
     !position.with_drop(piece, to).has_legal_moves()
 }
@@ -722,48 +668,33 @@ mod tests {
         assert!(!position.in_check());
     }
 
+    /// Each entry is here for one configuration the others do not reach. The
+    /// liveness assertions in the tests below fail if a fixture stops
+    /// covering its case, so removing one is loud rather than silent.
     const CALLBACK_POSITIONS: &[&str] = &[
         "startpos",
         // Matsuri midgame position: heavy hands, many drops.
         "l6nl/5+P1gk/2np1S3/p1p4Pp/3P2Sp1/1PPb2P1P/P5GS1/R8/LN4bKL w GR5pnsg 1",
         // Max legal moves.
         "R8/2K1S1SSk/4B4/9/9/9/9/9/1L1L1L3 b RBGSNLP3g3n17p 1",
-        // In check: a real game position (from the sampled-v1 fixture) where
-        // a bishop on 7g checks the king on 5i, so the evasion path is
-        // covered. This entry used to be a byte-for-byte copy of startpos
-        // under a comment claiming it was in check.
+        // In check (a real game position): a bishop on 7g checks the king on
+        // 5i, so the evasion path is covered.
         "lnsgk2nl/1r4gs1/p1pppp1pp/6p2/1p5P1/2P6/PPbPPPP1P/2G2G1R1/LNS1K1SNL b b 15",
-        // Double check by two *sliders* — a rook on 5b down the file and a
-        // bishop on 3c along the diagonal, both reaching the king on 5e. The
-        // only legal replies are the four king moves; the gold on 2d may not
-        // capture the bishop. Nothing else here reaches `checkers.count() >= 2`
-        // with more than one sniper, which is the case `check_info` ORs
-        // together rather than assigns.
+        // Double check by two *sliders* (rook 5b, bishop 3c, king 5e): the
+        // only case where `check_info`'s `checkers |=` differs from `=`.
         "8k/4r4/6b2/7G1/4K4/9/9/9/9 b - 1",
-        // Two pins at once, and not in check: the gold on 5d is pinned down
-        // the file by the rook on 5a, the silver on 4d along the diagonal by
-        // the bishop on 2b. The other half of `check_info` accumulates too,
-        // and one sniper cannot tell that apart either.
+        // Two pins at once, not in check (rook 5a pins the gold, bishop 2b
+        // the silver): the same demand on `pinned |=`.
         "4r4/7b1/9/4GS3/4K4/9/9/9/8k b - 1",
-        // The only fixture with *promoted* sliders: a white dragon on 4a and
-        // a white horse on 1c, both far outside the king's step-attacker box,
-        // so each bears on it only by sliding — the dragon's file covers 4i
-        // and the horse's diagonal covers 6h, two of the king's own
-        // destinations. Elsewhere in this list a dragon arrives only when
-        // matsuri happens to promote its rook within the two plies walked,
-        // i.e. incidentally and subject to another position's move ordering.
+        // The only fixture with *promoted* sliders bearing on the king by
+        // sliding: a dragon on 4a covers 4i, a horse on 1c covers 6h, and
+        // both stand outside the king's step-attacker box.
         "k4+R3/9/8+B/9/9/9/9/9/4K4 b - 1",
-        // A promoted slider caught by the *step* term alone: the white dragon
-        // on 3g stands two files and two ranks from the king on 5i, so it is
-        // inside `STEP_ATTACKER_ZONE` and outside `ORTHOGONAL_ATTACKER_ZONE`
-        // — its rank and file miss the king's neighbourhood entirely, and what
-        // reaches 4h is its *diagonal* sidestep. Restricting the step term to
-        // the non-sliders therefore drops it and makes 4h a legal king move,
-        // which is exactly the tidying `king_danger` warns against. That
-        // configuration occurs nowhere else in this list for a dragon (the
-        // horse half of it is reached twice, in the in-check position, after
-        // Bx6h+), so without this fixture the invariant rests on the random
-        // differential playouts alone.
+        // A dragon held by the *step* term alone — 3g is inside
+        // `STEP_ATTACKER_ZONE` and outside `ORTHOGONAL_ATTACKER_ZONE`, and
+        // what reaches 4h is its diagonal sidestep. Restricting that term to
+        // the non-sliders makes 4h a legal king move, and this is the only
+        // position in the list that catches it.
         "4k4/9/9/9/9/9/6+r2/9/4K4 b - 1",
     ];
 
@@ -830,10 +761,8 @@ mod tests {
     }
 
     /// `write_into` must agree with the iterator **element for element and
-    /// in order**, not merely as a set: the two drain `promotions` and
-    /// `non_promotions` in the same order, and a caller collecting into a
-    /// buffer can depend on that. Sabotaging either loop's order, dropping
-    /// the promotions loop, or swapping the `promote` flag fails here.
+    /// in order**, not merely as a set: a caller collecting into a buffer can
+    /// depend on that.
     #[test]
     fn write_into_matches_the_iterator() {
         for sfen in CALLBACK_POSITIONS {
@@ -855,9 +784,8 @@ mod tests {
             });
             assert!(sets > 0, "no move sets for {sfen}");
             assert_eq!(written, expected, "write_into disagrees on {sfen}");
-            // Against `expected`, not `written`: `legal_moves` drives
-            // `write_into` itself now, so comparing it to `written` would be
-            // circular. `expected` is the iterator's list.
+            // Against `expected` (the iterator's list), not `written`:
+            // `legal_moves` drives `write_into`, so that would be circular.
             assert_eq!(position.legal_moves(), expected, "legal_moves disagrees");
         }
     }
@@ -930,25 +858,21 @@ mod tests {
     }
 
     /// The filter may only drop pieces that could not have reached the king's
-    /// neighbourhood, so the two must agree **on the king's neighbours** —
-    /// which is the only place either is defined (elsewhere the filtered one
-    /// is deliberately smaller). Held over every position two plies deep from
-    /// each fixture.
+    /// neighbourhood, so the two scans must agree **on the king's neighbours**
+    /// — the only place either is defined. Held over every position two plies
+    /// deep from each fixture.
     ///
-    /// Deep perft does reject every sabotage of this filter that has been
-    /// tried (DECISIONS.md), so it is not the sole net — but it only reports a
-    /// mistake where the tree happens to contain a position in which the
-    /// omitted piece bears on a king destination, which is exactly the
-    /// coverage the 2026-08-07 dragon omission fell through. This test does
-    /// not depend on that luck: it compares the two scans directly at every
-    /// node, whether or not the difference would have changed a move.
+    /// Unlike perft, this does not depend on the tree happening to contain a
+    /// position where the omitted piece bears on a king destination: it
+    /// compares the two scans at every node, whether or not the difference
+    /// would have changed a move.
     #[test]
     fn king_danger_agrees_with_the_unfiltered_scan() {
         /// `step_only` counts the nodes where an enemy *promoted* slider is
         /// held by the step term alone — inside `STEP_ATTACKER_ZONE`, outside
-        /// its own ray zone — which is the one configuration that tells
-        /// "the step term applies to every enemy piece" apart from "the step
-        /// term applies to the non-sliders", the shape this loop used to have.
+        /// its own ray zone — which is the one configuration distinguishing
+        /// "the step term applies to every enemy piece" from "... to the
+        /// non-sliders".
         fn walk(
             position: &mut Position,
             depth: u32,
@@ -965,12 +889,10 @@ mod tests {
                     king_danger_reference(position, us, king, occupied) & neighbours,
                     "king_danger disagrees with the unfiltered scan in\n{position:?}"
                 );
-                // Enemy sliders the filter refuses to walk. This is the work
-                // the change removes, and counting it is what makes the
-                // agreement above evidence of anything: on a corpus where
-                // nothing is ever dropped, the two are trivially equal.
-                // Per family, exactly as `king_danger` splits them: a bishop
-                // standing in the *orthogonal* zone is still dropped.
+                // Enemy sliders the filter refuses to walk. Counting them is
+                // what makes the agreement above evidence of anything: on a
+                // corpus where nothing is dropped, the two are trivially
+                // equal. Split per family exactly as `king_danger` does.
                 let their = position.player_bb(us.flip());
                 let rooks = their
                     & (position.piece_kind_bb(PieceKind::Rook)
@@ -1012,21 +934,18 @@ mod tests {
             walk(&mut position, 2, &mut nodes, &mut dropped, &mut step_only);
         }
         assert!(nodes > 10_000, "test covered only {nodes} nodes");
-        // Measured at 0.51 per node over this corpus; the bar is a quarter of
-        // that, so it fails on a filter that has quietly become a no-op
-        // rather than on ordinary fixture drift.
+        // The bar is a quarter of the rate this corpus actually achieves, so
+        // it fails on a filter that has quietly become a no-op rather than on
+        // ordinary fixture drift.
         assert!(
             dropped * 8 > nodes,
             "only {dropped} sliders dropped over {nodes} nodes; the filter is barely exercised"
         );
-        // The same demand `check_info_agrees_with_attackers_to` makes of its
-        // double check and double pin: the configuration that distinguishes
-        // the code from its plausible-looking mutation has to be reached, or
-        // the agreement above is silently about something else. Both halves
-        // are rare — the dragon's is the last fixture's whole reason for
-        // existing, and the horse's occurs twice in the in-check position —
-        // so a fixture list that drifts must fail here rather than quietly
-        // stop covering it.
+        // The configuration that distinguishes the code from its
+        // plausible-looking mutation has to be reached, or the agreement
+        // above is silently about something else. Both halves are rare, so a
+        // fixture list that drifts must fail here rather than stop covering
+        // it.
         assert!(
             step_only > 0,
             "no enemy dragon or horse was ever held by the step term alone; \
@@ -1066,11 +985,10 @@ mod tests {
     }
 
     /// `check_info` folds the slider half of the checker search into the pin
-    /// scan, so *both* halves must stay exactly what the code it replaced
-    /// reported: `checkers` against the general `attackers_to` reverse
-    /// lookup, and `pinned` against the old standalone scan. Held over every
-    /// position two plies deep from each fixture — tens of thousands of
-    /// nodes, including single checks, a slider double check, and pins.
+    /// scan, so *both* halves must stay what they replaced: `checkers`
+    /// against the general `attackers_to` reverse lookup, and `pinned`
+    /// against the standalone scan. Held over every position two plies deep
+    /// from each fixture.
     #[test]
     fn check_info_agrees_with_attackers_to() {
         /// `doubles` / `double_pins` count the configurations that make the
@@ -1124,10 +1042,10 @@ mod tests {
             walk(&mut position, 2, &mut nodes, &mut doubles, &mut double_pins);
         }
         assert!(nodes > 10_000, "test covered only {nodes} nodes");
-        // Both accumulations in the sniper loop need more than one sniper to
-        // be distinguishable from a plain assignment, and neither case occurs
-        // by accident: before these fixtures existed, turning either `|=`
-        // into `=` passed the whole suite including the deep perft values.
+        // Both accumulations need more than one sniper to be distinguishable
+        // from a plain assignment, and neither case occurs by accident:
+        // without these fixtures, turning either `|=` into `=` passes the
+        // whole suite including the deep perft values.
         assert!(doubles > 0, "no double check reached; the OR is untested");
         assert!(double_pins > 0, "no double pin reached; the OR is untested");
     }

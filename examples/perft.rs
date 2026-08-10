@@ -32,11 +32,8 @@ fn perft(position: &mut Position, depth: u32) -> u64 {
         });
         return nodes;
     }
-    // Deeper nodes still need the moves themselves, and `do_move` cannot
-    // run while the callback holds the position borrowed. `write_into`
-    // rather than `extend`: the internal nodes are a small share of this
-    // tree, but they are not free, and the `--materialize` driver below has
-    // used `write_into` since it was added.
+    // Deeper nodes still need the moves themselves, and `do_move` cannot run
+    // while the callback holds the position borrowed.
     let mut moves = Vec::with_capacity(MAX_LEGAL_MOVES);
     let _ = position.generate_moves(|set| {
         set.write_into(&mut moves);
@@ -53,10 +50,8 @@ fn perft(position: &mut Position, depth: u32) -> u64 {
 
 /// The same tree, but leaf parents obtain their count by **materializing**
 /// every legal move, which is what every engine in the cross-engine harness
-/// does: YaneuraOu counts `MoveList<LEGAL_ALL>(pos).size()`, the apery driver
-/// `MoveList<LegalAll>`, and yasai / rshogi / cshogi their respective
-/// legal-move lists. `perft` above counts two popcounts per origin off the
-/// destination bitboards and constructs nothing.
+/// does; `perft` above counts off the destination bitboards and constructs
+/// nothing.
 ///
 /// Both are kept because they answer different questions. Counting without
 /// building moves is what `MoveSet::len()` is for and is the faster path, but
@@ -64,13 +59,12 @@ fn perft(position: &mut Position, depth: u32) -> u64 {
 /// is the one whose numbers are comparable to the other engines', and the
 /// difference between the two is the size of that advantage (BENCHMARKS.md).
 ///
-/// One buffer is threaded through the whole tree, and each ply takes a slice
-/// off the end and truncates back on the way out, so the walk allocates
-/// nothing — the other engines' leaf move lists are stack arrays, and paying
-/// a `malloc` per node here would measure our driver rather than our
-/// generator. The caller sizes that buffer from the depth
-/// ([`MAX_LEGAL_MOVES`] per ply), so the claim holds for whatever depth is
-/// asked for on the command line, not merely for the harness's presets.
+/// One buffer is threaded through the whole tree, each ply taking a slice off
+/// the end and truncating back on the way out, so the walk allocates nothing
+/// — the other engines' leaf move lists are stack arrays, and a `malloc` per
+/// node here would measure our driver rather than our generator. The caller
+/// sizes that buffer from the depth ([`MAX_LEGAL_MOVES`] per ply), so that
+/// holds at whatever depth is asked for, not merely the harness's presets.
 fn perft_materialize(position: &mut Position, depth: u32, buf: &mut Vec<Move>) -> u64 {
     if depth == 0 {
         return 1;
@@ -79,9 +73,7 @@ fn perft_materialize(position: &mut Position, depth: u32, buf: &mut Vec<Move>) -
     let _ = position.generate_moves(|set| {
         // `write_into` rather than `buf.extend(set)`: same moves in the same
         // order, but it decides drop-versus-board once per set instead of
-        // once per move. The gain sorts by moves per set and is largest on
-        // the dense positions; `movegen/*-wi` against `movegen/*-buf` is the
-        // instrument, and DECISIONS.md has the figures.
+        // once per move.
         set.write_into(buf);
         ControlFlow::Continue(())
     });

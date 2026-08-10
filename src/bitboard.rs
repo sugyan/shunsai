@@ -100,20 +100,13 @@ impl Bitboard {
 
     /// Calls `f` with every square in the set, lowest array index first.
     ///
-    /// This is the bulk form of [`Bitboard::pop`], and it is faster for two
-    /// reasons that only show up when a caller drains a whole set.
-    ///
-    /// It walks **one 64-bit word at a time** instead of popping from the
-    /// `u128`: on aarch64 `u128::trailing_zeros` needs an `rbit`/`clz` pair
-    /// on each half plus a select, and `x & (x - 1)` needs a borrow chain,
-    /// so both cost roughly twice their 64-bit counterparts. The 81 bits are
-    /// contiguous, so the low word already covers array indices 0..64 and
-    /// the high word is usually empty.
-    ///
-    /// And it builds each [`Square`] with `from_u8_unchecked`, where `pop`
-    /// goes through `Square::from_u8` — a `pub extern "C"` function that
-    /// re-checks a `0..=81` range this type's invariant already guarantees.
-    /// (`shogi_core`'s own `Bitboard::pop` does the same thing.)
+    /// The bulk form of [`Bitboard::pop`], faster only when a caller drains a
+    /// whole set. It walks **one 64-bit word at a time** rather than popping
+    /// from the `u128` — on aarch64 both `u128::trailing_zeros` and
+    /// `x & (x - 1)` cost roughly twice their 64-bit counterparts, and the 81
+    /// bits are contiguous, so the high word is usually empty — and it builds
+    /// each [`Square`] unchecked, where `pop` re-validates a range this
+    /// type's invariant already guarantees.
     #[inline(always)]
     pub(crate) fn for_each_square(self, mut f: impl FnMut(Square)) {
         let mut low = self.0 as u64;
@@ -132,18 +125,13 @@ impl Bitboard {
             // `index + 65` is in `65..=81`. `ALL` and `Not` mask,
             // `single`/`file` are in range by construction, and the bitwise
             // ops preserve it — `bits_stay_within_the_board` guards that
-            // much. `from_bits` is the one way in that is not structural:
-            // it is `pub(crate)`, and its callers divide in two. The table
-            // builders in `tables` and `sliders` are const-evaluated, where
-            // its `debug_assert!` is a compile error. The four runtime
-            // callers in `sliders` are in range by construction too, but
-            // only that: `file_attacks`/`lance_attacks` shift a nine-bit
-            // walk left by a multiple of nine, at most 72, and
-            // `bishop_attacks`/`rook_attacks` only OR together values read
-            // back out of those const tables. Nothing but the
-            // `debug_assert!` holds them to it, which is why a debug
-            // `cargo test` — where perft drives every one of them — is part
-            // of this function's guard and not only a correctness run.
+            // much. `from_bits` is the one way in that is not structural.
+            // Its const callers in `tables`/`sliders` turn its
+            // `debug_assert!` into a compile error; its four runtime callers
+            // in `sliders` are in range by construction but held to it by
+            // nothing else, which is why a **debug** `cargo test` — where
+            // perft drives every one of them — is part of this function's
+            // guard and not only a correctness run.
             f(unsafe { Square::from_u8_unchecked(index + 65) });
         }
     }

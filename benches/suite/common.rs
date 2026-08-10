@@ -11,9 +11,8 @@ pub const MAX_MOVES_SFEN: &str = "R8/2K1S1SSk/4B4/9/9/9/9/9/1L1L1L3 b RBGSNLP3g3
 /// The most legal moves any shogi position has — the count of
 /// [`MAX_MOVES_SFEN`], which is why that position is in the fixture set.
 ///
-/// Buffers are sized from this so no measured closure ever grows one: a
-/// growth realloc costs 41.6 ns on this machine and would land in the numbers
-/// as generation cost.
+/// Buffers are sized from this so no measured closure ever grows one, which
+/// would land in the numbers as generation cost.
 pub const MAX_LEGAL_MOVES: usize = 593;
 
 /// Capacity for the single-position move buffer the `movegen/*-buf` ids own.
