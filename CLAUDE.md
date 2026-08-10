@@ -61,10 +61,22 @@ Each fact lives in **one** place that can be checked. Keep it that way — prose
 | where | what belongs there |
 |---|---|
 | **Public API doc comments** (`Bitboard`, `MoveSet`, `Position`, ...) | the **contract**: what it returns, what it guarantees, what it does not. This is what `rinsai` reads on docs.rs. No rationale, no history. `src/position.rs` is the model. |
-| **Private implementation comments** | an **invariant you would break by accident**, or a genuinely non-obvious trick (`sliders/qugiy.rs`'s `o - 2r` derivation). Put it next to the code it constrains — nobody opens a separate document while editing. |
+| **Private implementation comments** | an **invariant you would break by accident**, or a genuinely non-obvious trick (`src/sliders/qugiy.rs`'s `o - 2r` derivation). Put it next to the code it constrains — nobody opens a separate document while editing. |
 | **Test comments** | what configuration this fixture or assertion **uniquely** covers, in a line or two. Prefer a liveness assertion over a paragraph: an `assert!(reached > 0)` enforces coverage where prose only claims it. |
 | **DECISIONS.md / BENCHMARKS.md / `benches/history/*.json`** | measured figures, what was tried and rejected, open questions, and the story of how a number was obtained. |
 
 **Never put a measured timing or speedup in a code comment.** It is true of one machine on one day, nothing in CI checks it, and it will be wrong before anyone notices. Static sizes are different — keep one when it explains a layout choice (`2.3 KiB, so it stays L1-resident`), drop it when it is just accounting.
 
 Do not narrate history in comments (`used to be`, `it replaces ...`) — git has it. Do not leave instructions for future maintainers that the code cannot enforce (`do not add this back without re-measuring`) — that is DECISIONS.md's job.
+
+### Keep the documents small on purpose
+
+DESIGN.md reached 143 KB by appending to a decision log forever, and the volume is
+what let errors in: restating a measurement in prose is how a figure ends up
+contradicting the file it was copied from. Two rules, both cheap:
+
+- **A number appears in prose only if a future decision depends on the number itself.** Otherwise cite the bench id and let `benches/history/*.json` hold it. A figure you cannot check against that file should not be written down.
+- **Compress, do not append a correction.** When an entry's conclusion is superseded or generalized, rewrite that entry — git holds the old text. A log where later bullets qualify earlier ones is how a document comes to contradict itself.
+
+Before adding to any of the three documents, ask which one owns the fact
+(the table above), and whether it is already stated somewhere else. It usually is.

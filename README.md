@@ -4,7 +4,7 @@
 
 `shunsai` is a Rust library for high-speed generation of legal moves in [Shogi](https://en.wikipedia.org/wiki/Shogi). It is the successor to [`sugyan/yasai`](https://github.com/sugyan/yasai) ("Yet Another Shogi library, for AI"), redesigned from the inside out to be one of the fastest shogi move generators in Rust.
 
-> ⚠️ **Status: M4 largely done; M5 met.** Fully legal move generation (including pawn-drop-mate exclusion), validated against known perft values and differential-tested against `shogi_legality_lite`. Every optimization in the tree was adopted by measurement against the committed benchmark history.
+> ⚠️ **Status: M4 largely done; M5 met.** Fully legal move generation (including pawn-drop-mate exclusion), validated against known perft values and differential-tested against `shogi_legality_lite`. Optimizations are adopted by measurement against the committed benchmark history — including the ones that measured neutral and were kept for other reasons, which [DECISIONS.md](./DECISIONS.md) records as such.
 >
 > Against [haitaka](https://github.com/tofutofu/haitaka) — the main rival, and the only engine measured on the same leaf-counting convention — shunsai is ahead on **all three** fixture positions; apery_rust is beaten on all three too. Against the C++ engines, read only the **materializing** convention, where shunsai is fastest of nine on the midgame and max-moves positions and second on the initial position. Full tables and the convention caveat: [BENCHMARKS.md](./BENCHMARKS.md).
 

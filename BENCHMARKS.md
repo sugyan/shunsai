@@ -29,13 +29,15 @@ result was adopted or rejected is in [DECISIONS.md](./DECISIONS.md).
   | **count-only** | straight off the destination bitboards; **no `Move` is ever constructed** | shunsai (`MoveSet::len()`, two popcounts), haitaka (`PieceMoves::into_iter().len()`) |
   | **materialize** | build every legal move, take the list's length | YaneuraOu (`MoveList<LEGAL_ALL>`, `source/perft.h`), apery (`MoveList<LegalAll>`), apery_rust (`leaf_mlist.generate::<LegalAllType>`), yasai, rshogi, cshogi, Fairy-Stockfish (`MoveList<LEGAL>`) |
 
-  Count-only is a genuine advantage of the callback API — it is what `MoveSet::len()` is *for* — but it is one **perft collects and a search cannot**, since a search must have the moves. So a count-only number and a materializing number are not comparable, and the gap is not small: measured on shunsai's own drivers, materializing costs **1.5× / 2.9× / 5.6×** on startpos-d5 / matsuri-d3 / maxmoves-d3. The harness records `leaf` per row and carries `shunsai-mat` and `haitaka-mat` columns (the same binaries with `--materialize`), so each pair isolates exactly this difference.
+  Count-only is a genuine advantage of the callback API — it is what `MoveSet::len()` is *for* — but it is one **perft collects and a search cannot**, since a search must have the moves. So a count-only number and a materializing number are not comparable, and the gap is not small: on the current run below, `shunsai-mat` costs **1.55× / 2.76× / 4.47×** what `shunsai` does. Read that ratio off the current table rather than quoting it from here — it has moved every time the expansion path was optimized. The harness records `leaf` per row and carries `shunsai-mat` and `haitaka-mat` columns (the same binaries with `--materialize`), so each pair isolates exactly this difference.
 
   **Never compare numbers produced under different conventions.** Mixing them is what made the standing unreadable for a week — see [Cross-engine standing](#cross-engine-standing).
 
 ### How the C++ engines are measured
 
 YaneuraOu is driven over USI with its built-in **`go perft <d>`** (`Benchmark::perft`), which uses `MoveList<LEGAL_ALL>` and bulk-counts at leaf parents — the same tree under the materializing convention. Its self-reported `Elapsed Time` is an *integer millisecond* count plus a deliberate `+1` (ゼロ割防止), so the harness subtracts the 1 ms and falls back to wall time below a millisecond; charging the raw figure had been costing YaneuraOu up to +10 % on the matsuri cell.
+
+⚠️ **Do not measure YaneuraOu with `test genmoves`.** It looks like the movegen-level command and is not convention-compatible: it loops `MoveList<EVASIONS>` / `MoveList<NON_EVASIONS>` rather than `LEGAL_ALL`, so its numbers cannot be compared with anything else in the table.
 
 apery ships no perft at all, so it gets a small driver of our own on `MoveList<LegalAll>`. cshogi likewise has none, so we drive its `Board` API from Python — its binding overhead is part of what the "practical stack" comparison measures, and should be reported as such.
 
@@ -207,11 +209,12 @@ successful run doubles as a differential test on real games.
 
 ## Quieting the machine first
 
-A history entry is only worth the machine state during it, and a
-plausible-looking number is not evidence that the machine was quiet — two
-entries in [DECISIONS.md](./DECISIONS.md) were re-run for exactly this reason
-(σ = 46 % on `perft/matsuri/3` once; two whole suite runs discarded another
-time). Neither mean *looked* wrong.
+A history entry is only worth the machine state during it, and **a
+plausible-looking number is not evidence that the machine was quiet.** Two
+recorded entries needed re-running for exactly this reason: once at σ = 46 % on
+`perft/matsuri/3`, once with two whole suite runs discarded. Neither mean
+*looked* wrong — the σ = 46 % run landed on the previous entry's value and would
+have recorded a null result where the truth was a large gain.
 
 Three things are worth doing rather than assuming:
 
@@ -227,11 +230,40 @@ Three things are worth doing rather than assuming:
   before a run that will be recorded. Anything periodic is worse than
   anything constant, because it moves some ids and not others.
 
-Acceptance for a recordable run: σ ≤ 4 % on every id, or — for the shortest
-`movegen/*` ids, where σ is demonstrably not a function of duration —
-agreement across three independent runs. Re-rolling until every id happens to
-pass σ selects for lucky runs; agreement between runs is the stronger
-evidence.
+### What makes a run recordable
+
+All three, not any one:
+
+1. **σ ≤ 4 % on every id** — or, for the shortest `movegen/*` ids where σ is
+   demonstrably not a function of duration, **agreement across three
+   independent runs**. Re-rolling until every id happens to pass σ selects for
+   lucky runs; agreement between runs is the stronger evidence. Readings that
+   *drift monotonically* across runs are the machine changing state, not a
+   property of the id.
+2. **The control ids hold.** Quote the ids the change provably cannot reach
+   (`internals/*`, `do_undo/*` for a movegen change) and state their movement.
+   **If the control drifts as much as the signal, the run is not recordable** —
+   or, if it is recorded anyway, the entry must say so and give the ratio.
+3. **Nothing is quoted across a base it was not measured against.** Gains
+   quoted cross-day and losses quoted from same-run passes would flatter any
+   change; give both bases when they differ.
+
+Two traps this suite has actually sprung:
+
+- **The `Vec` ids drift across days**; never read a change into them. Their
+  `-cb` twins do the same generation without allocating and are the tell.
+- **A screen's per-cell figures expire when anything else in the crate moves.**
+  Numbers taken through one binary do not survive a change to another part of
+  the crate — inlining and code layout shift underneath them. Re-measure on the
+  tree that ships before recording.
+
+### Reading a figure against the committed history
+
+`scripts/bench_snapshot.py` commits criterion's **mean**; criterion's terminal
+output reports its **slope estimate**. The two differ by a few percent on the
+same id and must not be read against each other — a session comparing its
+console output to `benches/history/*.json` will otherwise see a phantom
+regression.
 
 ## Recording a history entry
 
@@ -293,7 +325,7 @@ times (0.089742 / 0.010291 / 0.082299): startpos a **1.05× loss**, matsuri
 |---|---|---|---|---|
 | 2026-07-30 | 0.075326 / 0.002407 / 0.010716 | — | 1.00× / 0.98× / 1.67× | *not comparable — conventions mixed* |
 | 2026-07-31 | 0.074960 / 0.002407 / 0.010969 | 0.108286 / 0.007764 / 0.066976 | 1.01× / 0.98× / 1.70× | 0.80× / 1.11× / 1.17× |
-| 2026-08-04 | 0.075095 / 0.002503 / 0.010930 | 0.102947 / 0.006144 / 0.043976 | 1.005× / 0.97× / 1.67× | 0.86× / 1.64× / 1.85× |
+| 2026-08-04 | 0.075095 / 0.002503 / 0.010930 | 0.102947 / 0.006144 / 0.043976 | 1.005× / 0.97× / 1.67× | 0.86× / 1.40…1.64× / 1.85× |
 | 2026-08-06 | 0.060926 / 0.002003 / 0.009771 | 0.094221 / 0.005524 / 0.043669 | **1.26× / 1.21× / 1.87×** | **0.95× / 1.86× / 1.88×** |
 
 ⚠️ **The 2026-07-30 row is why this table has a `leaf` column at all.** It read
@@ -308,8 +340,9 @@ constructs nothing either.
 ### Reading a harness run
 
 - **The control decides whether a cross-day read is sound.** Every engine other than shunsai should reproduce its previous time; 2026-08-06 held all of them to **2.4 %**, which is what made that read quotable. When `haitaka-bulk` — which this repository does not touch — moved +9.2 % on matsuri (2026-08-07), the run could resolve nothing and the standing was left unchanged.
-- **This harness is the instrument for 15–25 % steps, not for 3 % ones.** Perft trees spend only part of their time in generation, so a small generation change has no business showing here. A change of that size is a criterion-suite result.
+- **This harness is the instrument for 15–25 % steps, not for 3 % ones.** Perft trees spend only part of their time in generation, so a small generation change has no business showing here. A change of that size is a criterion-suite result. Where the two instruments have disagreed — including in sign, on the materializing initial position in 2026-08-07 — criterion is the one that resolves generation.
 - **Two cells are structurally unreliable.** YaneuraOu's matsuri cell is a ~10 ms measurement on a 1 ms clock, and cshogi's carry Python binding overhead. Hedge them explicitly or quote a range.
+- **Minimum-of-N is what makes a scattered harness run usable.** `spread_pct` can be poor while the minimum is sound, because noise only ever *adds* time — min-of-N recovers the quiet-slot figure provided one repeat got a quiet slot, and cross-day reproduction of the other engines is the evidence that they did. A high spread is therefore recorded rather than treated as disqualifying, but only alongside that control.
 
 ## History
 
@@ -339,8 +372,8 @@ down: only the first of those is a statement about the code.
 | 2026-07-29 | b94d7b1 | 160.9 | 228.8 | - | - | 546.5 | 1728.5 | - | - | 0.30 | 0.24 | 0.13 | - | - | 10.8 | pawn-drop-mate simulation no longer clones Position; movegen allocates nothing |
 | 2026-07-30 | 97e28b2 | 184.4 | 268.1 | - | - | 556.9 | 1844.2 | - | - | 0.29 | 0.20 | 0.09 | - | - | 10.8 | king danger bitboard (one per node, filtered to the king's neighbourhood) + checkers/pins fused into one scan; movegen/maxmoves-cb at sigma 5.7%; recorded on 3-run agreement (reported time 101.94/101.11/100.84 ns), not on duration |
 | 2026-08-03 | 045db51 | 188.1 | 267.5 | 187.4 | - | 554.1 | 1869.2 | 595.6 | - | 0.30 | 0.22 | 0.09 | 0.20 | - | 10.7 | materializing leaf convention: perft/*-mat and movegen/*-buf ids added; recorded on 3-run agreement (worst spread 3.8%, sigma up to 33% on movegen/* under background load) |
-| 2026-08-04 | ded13fc | 178.5 | 257.4 | 179.8 | 187.6 | 631.2 | 869.7 | 583.7 | 797.5 | 0.25 | 0.20 | 0.09 | 0.20 | 0.16 | 11.0 | MoveSet::write_into + legal_moves() routed through it; perft/matsuri-cb/3 unstable under whole-suite conditions (sigma 27%, cause unresolved) - its series is not comparable with 2026-08-03, see DESIGN.md; the other 45 ids are sigma <= 4% |
+| 2026-08-04 | ded13fc | 178.5 | 257.4 | 179.8 | 187.6 | 631.2 | 869.7 | 583.7 | 797.5 | 0.25 | 0.20 | 0.09 | 0.20 | 0.16 | 11.0 | MoveSet::write_into + legal_moves() routed through it; perft/matsuri-cb/3 unstable under whole-suite conditions (sigma 27%, cause unresolved) - its series is not comparable with 2026-08-03, see DECISIONS.md; the other 45 ids are sigma <= 4% |
 | 2026-08-06 | 2be3a5b | 181.2 | 329.9 | 203.8 | 211.4 | 758.7 | 2210.0 | 608.7 | 828.3 | 0.22 | 0.17 | 0.07 | 0.16 | 0.14 | 10.8 | piece-indexed attacks_of dispatch + per-origin promotion decision; generation -22.7% on startpos, -23.1% on the sampled-v1 real-game fixture; legal_moves() sized from 593. Recorded on agreement across four independent runs (44 of 46 ids within 3.4%) rather than sigma; perft/maxmoves-cb/2 reads 15% above the other three runs while its non-allocating twin perft/maxmoves-cb-buf/2 is stable to 0.6% across all four, so treat that one id's series as broken here - the same allocator artifact 2026-08-04 recorded for perft/matsuri-cb/3, which has itself recovered. |
-| 2026-08-07 | 658543b | 190.0 | 335.4 | 201.0 | 216.3 | 731.1 | 2211.6 | 597.6 | 794.1 | 0.21 | 0.17 | 0.07 | 0.16 | 0.14 | 10.8 | check_info's empty-board sniper scan served from ray tables: generation -3.4% on the sampled-v1 real-game fixture, -3.0% on its in-check subset, -0.9..-1.8% on the three fixture positions, and -1.6..-2.3% on the perft trees. Recorded on agreement across four independent runs (42 of 46 ids within 4%) rather than sigma - the ids over the bar drifted monotonically across runs rather than scattering, so the median of the four is what the DESIGN.md entry quotes. Control: all 11 ids this change cannot reach (internals/*, do_undo) reproduce their 2026-08-06 figures within +-1.7%, which is what makes the cross-day read sound. |
-| 2026-08-07 | d056511 | 182.1 | 398.6 | 223.0 | 224.4 | 771.0 | 2451.3 | 609.4 | 847.1 | 0.21 | 0.16 | 0.06 | 0.16 | 0.14 | 10.9 | king_danger's slider half filtered by the orthogonal/diagonal attacker zones. Figures are from the two order-reversed passes; this file's own deltas against 658543b are given alongside where the two differ, because the table is read standalone. Generation -16.4% on the initial position (cross-day -16.40%), -11.7% matsuri (-11.2%), -9.0% on the sampled-v1 real-game fixture (-9.05%), -6.4% on its in-check subset (-6.5%); perft/startpos-cb/4 -17.5% (-15.9%), maxmoves-cb/2 -14.4% (-21.2%, an id the 2026-08-06 row flagged as a broken series), matsuri-cb/3 -9.4% (-9.8%). Recorded on agreement across two order-reversed passes of both binaries (the measured ids agree to 0.4-2.7 pp; startpos-cb, the widest, -17.74/-15.03). Control is imperfect and the reason is the change itself: the two new tables shift .rodata, and internals/bishop-attacks-magic reproduces +4.4% across both passes with each binary self-reproducing to 0.7%. Signal is 1.5-4.0x that and opposite in sign - 3.7-4.0x on the two startpos cells, 2.0-2.7x on matsuri and the real-game fixture, 1.5x on the in-check subset, which is the thinnest cell here. Moving the wrong way and not named in the DESIGN.md bullets, all cross-day: perft/startpos/4 +4.4%, internals/* +0.8..+3.6%, and movegen/maxmoves-buf +25.6% (the passes read +18.4/+21.8%), the largest single movement in the run in either direction. do_undo +0.1% in pass 1; its +16.6% in pass 2 is a disturbance during that one measurement (the same binary self-reproduced +18.5% against its own pass-1 run). |
+| 2026-08-07 | 658543b | 190.0 | 335.4 | 201.0 | 216.3 | 731.1 | 2211.6 | 597.6 | 794.1 | 0.21 | 0.17 | 0.07 | 0.16 | 0.14 | 10.8 | check_info's empty-board sniper scan served from ray tables: generation -3.4% on the sampled-v1 real-game fixture, -3.0% on its in-check subset, -0.9..-1.8% on the three fixture positions, and -1.6..-2.3% on the perft trees. Recorded on agreement across four independent runs (42 of 46 ids within 4%) rather than sigma - the ids over the bar drifted monotonically across runs rather than scattering, so the median of the four is what the DECISIONS.md entry quotes. Control: all 11 ids this change cannot reach (internals/*, do_undo) reproduce their 2026-08-06 figures within +-1.7%, which is what makes the cross-day read sound. |
+| 2026-08-07 | d056511 | 182.1 | 398.6 | 223.0 | 224.4 | 771.0 | 2451.3 | 609.4 | 847.1 | 0.21 | 0.16 | 0.06 | 0.16 | 0.14 | 10.9 | king_danger's slider half filtered by the orthogonal/diagonal attacker zones. Figures are from the two order-reversed passes; this file's own deltas against 658543b are given alongside where the two differ, because the table is read standalone. Generation -16.4% on the initial position (cross-day -16.40%), -11.7% matsuri (-11.2%), -9.0% on the sampled-v1 real-game fixture (-9.05%), -6.4% on its in-check subset (-6.5%); perft/startpos-cb/4 -17.5% (-15.9%), maxmoves-cb/2 -14.4% (-21.2%, an id the 2026-08-06 row flagged as a broken series), matsuri-cb/3 -9.4% (-9.8%). Recorded on agreement across two order-reversed passes of both binaries (the measured ids agree to 0.4-2.7 pp; startpos-cb, the widest, -17.74/-15.03). Control is imperfect and the reason is the change itself: the two new tables shift .rodata, and internals/bishop-attacks-magic reproduces +4.4% across both passes with each binary self-reproducing to 0.7%. Signal is 1.5-4.0x that and opposite in sign - 3.7-4.0x on the two startpos cells, 2.0-2.7x on matsuri and the real-game fixture, 1.5x on the in-check subset, which is the thinnest cell here. Moving the wrong way and not named in the DECISIONS.md bullets, all cross-day: perft/startpos/4 +4.4%, internals/* +0.8..+3.6%, and movegen/maxmoves-buf +25.6% (the passes read +18.4/+21.8%), the largest single movement in the run in either direction. do_undo +0.1% in pass 1; its +16.6% in pass 2 is a disturbance during that one measurement (the same binary self-reproduced +18.5% against its own pass-1 run). |
 <!-- BENCH_HISTORY_END -->

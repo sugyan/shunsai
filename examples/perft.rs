@@ -16,7 +16,7 @@ use shogi_usi_parser::FromUsi;
 use shunsai::Position;
 
 /// The most legal moves any shogi position has — the count of the max-moves
-/// position in BENCHMARKS.md.
+/// position in DESIGN.md §6.
 const MAX_LEGAL_MOVES: usize = 593;
 
 fn perft(position: &mut Position, depth: u32) -> u64 {
