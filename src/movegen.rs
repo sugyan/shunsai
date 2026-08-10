@@ -468,10 +468,33 @@ fn generate_king_moves(
 /// every enemy piece, and one pass over all ~20 of them is a *fixed* cost
 /// where the test it replaces was paid per candidate square — at the initial
 /// position the king has three, and paying for twenty measured +15 % on
-/// `perft/startpos-cb/4`. Since only attacks landing next to the king can
-/// ever survive the mask, a piece that moves a fixed number of steps can be
-/// skipped outright unless it stands in [`tables::step_attacker_zone`];
-/// sliders reach from anywhere and are always included.
+/// `perft/startpos-cb/4`.
+///
+/// So only attacks landing next to the king can survive the mask, and every
+/// enemy piece is filtered on where it stands before its attack set is ever
+/// built. A slider is *not* exempt from that: reaching from anywhere is not
+/// the same as reaching from anywhere *to here*, and the squares a rook or a
+/// bishop can bear on a king neighbour from are as fixed by the king square
+/// as a knight's are — the union, over the eight neighbours, of the rays that
+/// reach each one on an empty board (`tables::orthogonal_attacker_zone` /
+/// `diagonal_attacker_zone`). Treating sliders as unfilterable is what this
+/// loop used to do, and on the initial position it walked four enemy sliders
+/// that could not touch the king's neighbourhood at all.
+///
+/// The filter may only ever be a *superset* of what can attack: under-report
+/// danger and a king move that walks into check becomes legal. The
+/// empty-board rays give that direction for free, since occupancy only ever
+/// shortens a ray, and `slider_attacker_zones_cover_every_slider` holds the
+/// geometry to `attacks_of` itself.
+///
+/// What such a mistake costs is *one extra generated move*, so perft does see
+/// it — all three deep values reject each of the three sabotages recorded in
+/// DESIGN.md. But only where some position in the tree actually has the
+/// omitted piece bearing on a king destination, which is why the narrower
+/// omission of 2026-08-07 (a dragon's slide) slipped past every perft value
+/// and was caught by the `shogi_legality_lite` differential alone. Perft is a
+/// real net here and a coverage-dependent one; the differential is what
+/// closes it.
 ///
 /// A search wanting the opponent's *full* attack map — DESIGN.md's
 /// 2026-07-29 entry names this function as where that would come from —
@@ -479,12 +502,21 @@ fn generate_king_moves(
 /// measurement. It is not dropped speculatively.
 fn king_danger(position: &Position, us: Color, king: Square, occupied: Bitboard) -> Bitboard {
     let occupied = occupied ^ Bitboard::single(king);
-    let sliders = position.piece_kind_bb(PieceKind::Lance)
-        | position.piece_kind_bb(PieceKind::Bishop)
-        | position.piece_kind_bb(PieceKind::Rook)
-        | position.piece_kind_bb(PieceKind::ProBishop)
-        | position.piece_kind_bb(PieceKind::ProRook);
-    let relevant = position.player_bb(us.flip()) & (tables::step_attacker_zone(king) | sliders);
+    let rooks = position.piece_kind_bb(PieceKind::Rook)
+        | position.piece_kind_bb(PieceKind::ProRook)
+        // A lance's ray is a subset of the rook's, so the orthogonal zone is
+        // a superset for it and it needs no colour-keyed table of its own.
+        | position.piece_kind_bb(PieceKind::Lance);
+    let bishops =
+        position.piece_kind_bb(PieceKind::Bishop) | position.piece_kind_bb(PieceKind::ProBishop);
+    // The step term applies to *every* enemy piece, not only the non-sliders:
+    // it is what covers a horse's orthogonal sidesteps and a dragon's
+    // diagonal ones, which lie on neither piece's rays. Dropping it looks
+    // like tidying and is a silent bug — see `tables::step_attacker_zone`.
+    let relevant = position.player_bb(us.flip())
+        & (tables::step_attacker_zone(king)
+            | (rooks & tables::orthogonal_attacker_zone(king))
+            | (bishops & tables::diagonal_attacker_zone(king)));
     let mut danger = Bitboard::EMPTY;
     // One dense pass with a mailbox lookup, in the shape of
     // `generate_normal`'s main loop. Walking the 13 piece-kind bitboards
@@ -721,6 +753,18 @@ mod tests {
         // matsuri happens to promote its rook within the two plies walked,
         // i.e. incidentally and subject to another position's move ordering.
         "k4+R3/9/8+B/9/9/9/9/9/4K4 b - 1",
+        // A promoted slider caught by the *step* term alone: the white dragon
+        // on 3g stands two files and two ranks from the king on 5i, so it is
+        // inside `STEP_ATTACKER_ZONE` and outside `ORTHOGONAL_ATTACKER_ZONE`
+        // — its rank and file miss the king's neighbourhood entirely, and what
+        // reaches 4h is its *diagonal* sidestep. Restricting the step term to
+        // the non-sliders therefore drops it and makes 4h a legal king move,
+        // which is exactly the tidying `king_danger` warns against. That
+        // configuration occurs nowhere else in this list for a dragon (the
+        // horse half of it is reached twice, in the in-check position, after
+        // Bx6h+), so without this fixture the invariant rests on the random
+        // differential playouts alone.
+        "4k4/9/9/9/9/9/6+r2/9/4K4 b - 1",
     ];
 
     fn position_of(sfen: &str) -> Position {
@@ -859,6 +903,135 @@ mod tests {
         assert!(position.in_check());
         assert!(position.legal_moves().is_empty());
         assert!(!position.has_legal_moves());
+    }
+
+    /// `king_danger` as it stood before the slider filter — every enemy
+    /// slider walked wherever it stands. Kept as a test-only oracle, the way
+    /// `sliders::naive` is kept for the slider backends.
+    fn king_danger_reference(
+        position: &Position,
+        us: Color,
+        king: Square,
+        occupied: Bitboard,
+    ) -> Bitboard {
+        let occupied = occupied ^ Bitboard::single(king);
+        let sliders = position.piece_kind_bb(PieceKind::Lance)
+            | position.piece_kind_bb(PieceKind::Bishop)
+            | position.piece_kind_bb(PieceKind::Rook)
+            | position.piece_kind_bb(PieceKind::ProBishop)
+            | position.piece_kind_bb(PieceKind::ProRook);
+        let relevant = position.player_bb(us.flip()) & (tables::step_attacker_zone(king) | sliders);
+        let mut danger = Bitboard::EMPTY;
+        for square in relevant {
+            let piece = position.piece_at(square).expect("player_bb agrees");
+            danger |= tables::attacks_of(piece, square, occupied);
+        }
+        danger
+    }
+
+    /// The filter may only drop pieces that could not have reached the king's
+    /// neighbourhood, so the two must agree **on the king's neighbours** —
+    /// which is the only place either is defined (elsewhere the filtered one
+    /// is deliberately smaller). Held over every position two plies deep from
+    /// each fixture.
+    ///
+    /// Deep perft does reject every sabotage of this filter that has been
+    /// tried (DESIGN.md), so it is not the sole net — but it only reports a
+    /// mistake where the tree happens to contain a position in which the
+    /// omitted piece bears on a king destination, which is exactly the
+    /// coverage the 2026-08-07 dragon omission fell through. This test does
+    /// not depend on that luck: it compares the two scans directly at every
+    /// node, whether or not the difference would have changed a move.
+    #[test]
+    fn king_danger_agrees_with_the_unfiltered_scan() {
+        /// `step_only` counts the nodes where an enemy *promoted* slider is
+        /// held by the step term alone — inside `STEP_ATTACKER_ZONE`, outside
+        /// its own ray zone — which is the one configuration that tells
+        /// "the step term applies to every enemy piece" apart from "the step
+        /// term applies to the non-sliders", the shape this loop used to have.
+        fn walk(
+            position: &mut Position,
+            depth: u32,
+            nodes: &mut u64,
+            dropped: &mut u64,
+            step_only: &mut u64,
+        ) {
+            let us = position.side_to_move();
+            if let Some(king) = position.king_square(us) {
+                let occupied = position.occupied();
+                let neighbours = tables::king_attacks(king);
+                assert_eq!(
+                    king_danger(position, us, king, occupied) & neighbours,
+                    king_danger_reference(position, us, king, occupied) & neighbours,
+                    "king_danger disagrees with the unfiltered scan in\n{position:?}"
+                );
+                // Enemy sliders the filter refuses to walk. This is the work
+                // the change removes, and counting it is what makes the
+                // agreement above evidence of anything: on a corpus where
+                // nothing is ever dropped, the two are trivially equal.
+                // Per family, exactly as `king_danger` splits them: a bishop
+                // standing in the *orthogonal* zone is still dropped.
+                let their = position.player_bb(us.flip());
+                let rooks = their
+                    & (position.piece_kind_bb(PieceKind::Rook)
+                        | position.piece_kind_bb(PieceKind::ProRook)
+                        | position.piece_kind_bb(PieceKind::Lance));
+                let bishops = their
+                    & (position.piece_kind_bb(PieceKind::Bishop)
+                        | position.piece_kind_bb(PieceKind::ProBishop));
+                let steps = tables::step_attacker_zone(king);
+                let orthogonal = tables::orthogonal_attacker_zone(king);
+                let diagonal = tables::diagonal_attacker_zone(king);
+                *dropped += (rooks & !(steps | orthogonal)).count() as u64
+                    + (bishops & !(steps | diagonal)).count() as u64;
+                // Only the two promoted kinds can land here: a rook, bishop or
+                // lance bearing on a neighbour is in its ray zone by
+                // construction, so the step term is never the only thing
+                // holding one.
+                let dragons = rooks & position.piece_kind_bb(PieceKind::ProRook);
+                let horses = bishops & position.piece_kind_bb(PieceKind::ProBishop);
+                if !((dragons & steps & !orthogonal) | (horses & steps & !diagonal)).is_empty() {
+                    *step_only += 1;
+                }
+                *nodes += 1;
+            }
+            if depth == 0 {
+                return;
+            }
+            for mv in position.legal_moves() {
+                position.do_move(mv);
+                walk(position, depth - 1, nodes, dropped, step_only);
+                position.undo_move(mv);
+            }
+        }
+        let mut nodes = 0;
+        let mut dropped = 0;
+        let mut step_only = 0;
+        for sfen in CALLBACK_POSITIONS {
+            let mut position = position_of(sfen);
+            walk(&mut position, 2, &mut nodes, &mut dropped, &mut step_only);
+        }
+        assert!(nodes > 10_000, "test covered only {nodes} nodes");
+        // Measured at 0.51 per node over this corpus; the bar is a quarter of
+        // that, so it fails on a filter that has quietly become a no-op
+        // rather than on ordinary fixture drift.
+        assert!(
+            dropped * 8 > nodes,
+            "only {dropped} sliders dropped over {nodes} nodes; the filter is barely exercised"
+        );
+        // The same demand `check_info_agrees_with_attackers_to` makes of its
+        // double check and double pin: the configuration that distinguishes
+        // the code from its plausible-looking mutation has to be reached, or
+        // the agreement above is silently about something else. Both halves
+        // are rare — the dragon's is the last fixture's whole reason for
+        // existing, and the horse's occurs twice in the in-check position —
+        // so a fixture list that drifts must fail here rather than quietly
+        // stop covering it.
+        assert!(
+            step_only > 0,
+            "no enemy dragon or horse was ever held by the step term alone; \
+             restricting that term to the non-sliders would pass"
+        );
     }
 
     /// The pin scan as it stood before `check_info` fused the checker search

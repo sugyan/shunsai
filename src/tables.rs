@@ -225,6 +225,51 @@ const SLIDER_KINDS: u32 = (1 << PieceKind::Lance as u32)
 /// tables themselves.
 static STEP_ATTACKER_ZONE: [Bitboard; 81] = box_table(2, 3);
 
+/// The slider counterpart of [`STEP_ATTACKER_ZONE`]: every square from which
+/// a piece *sliding* along `steps` could attack a square adjacent to `king`.
+///
+/// The union, over the king's eight neighbours, of the rays reaching each one
+/// on an empty board. An empty-board ray is a superset of the real one —
+/// occupancy only ever shortens it — so a slider outside this set provably
+/// bears on no king destination whatever the board looks like, which is the
+/// only direction [`king_danger`](crate::movegen) may err in. It is not the
+/// exact set, and does not need to be.
+const fn slider_attacker_zone(steps: &[(i8, i8)]) -> [Bitboard; 81] {
+    let rays = ray_table(steps);
+    let mut table = [Bitboard::EMPTY; 81];
+    let mut index = 0;
+    while index < 81 {
+        let (file, rank) = (file_of(index), rank_of(index));
+        let mut bits = 0u128;
+        let mut i = 0;
+        while i < KING_STEPS.len() {
+            let (file_delta, rank_delta) = KING_STEPS[i];
+            let (to_file, to_rank) = (file + file_delta, rank + rank_delta);
+            if on_board(to_file, to_rank) {
+                bits |= rays[index_of(to_file, to_rank)].bits();
+            }
+            i += 1;
+        }
+        table[index] = Bitboard::from_bits(bits);
+        index += 1;
+    }
+    table
+}
+
+/// Where a rook, dragon or lance has to stand to attack a neighbour of `king`
+/// **along a rank or file**. A dragon's diagonal sidesteps are not on any rank
+/// or file, so they are not in here at all — [`STEP_ATTACKER_ZONE`] is what
+/// covers them, and `king_danger` needs both terms for a dragon.
+///
+/// A lance rides along in the orthogonal set rather than getting its own
+/// colour-keyed table: its ray is a subset of the rook's, so this is a
+/// superset for it, which is the safe direction.
+static ORTHOGONAL_ATTACKER_ZONE: [Bitboard; 81] = slider_attacker_zone(&ORTHOGONAL_STEPS);
+/// Where a bishop or horse has to stand to attack a neighbour of `king`
+/// **along a diagonal**. As above, a horse's orthogonal sidesteps are not on
+/// any diagonal and belong to [`STEP_ATTACKER_ZONE`].
+static DIAGONAL_ATTACKER_ZONE: [Bitboard; 81] = slider_attacker_zone(&DIAGONAL_STEPS);
+
 /// `BETWEEN[a][b]`: the squares strictly between `a` and `b` if they share a
 /// rank, file or diagonal; empty otherwise.
 static BETWEEN: [[Bitboard; 81]; 81] = between_table();
@@ -276,11 +321,35 @@ pub(crate) fn king_attacks(square: Square) -> Bitboard {
 }
 
 /// Where a step piece has to stand to attack a neighbour of `king`; see
-/// [`STEP_ATTACKER_ZONE`]. Sliders are unbounded and are never covered by
-/// this.
+/// [`STEP_ATTACKER_ZONE`].
+///
+/// **This covers the two promoted sliders' step halves as well**, and that is
+/// load-bearing: a horse's orthogonal sidesteps and a dragon's diagonal ones
+/// do not lie on the piece's own rays, so
+/// [`orthogonal_attacker_zone`] / [`diagonal_attacker_zone`] miss them. Both
+/// reach only a neighbour of a neighbour, i.e. two steps from the king, which
+/// the two-file-by-three-rank box contains. `king_danger` therefore keeps this
+/// term for *every* enemy piece rather than only the non-sliders, and
+/// `slider_attacker_zones_cover_every_slider` is what holds the pair together.
 #[inline(always)]
 pub(crate) fn step_attacker_zone(king: Square) -> Bitboard {
     STEP_ATTACKER_ZONE[king.array_index()]
+}
+
+/// Where a rook, dragon or lance has to stand to attack a neighbour of `king`
+/// **along a rank or file**; see [`ORTHOGONAL_ATTACKER_ZONE`]. A dragon's
+/// diagonal step is [`step_attacker_zone`]'s to cover.
+#[inline(always)]
+pub(crate) fn orthogonal_attacker_zone(king: Square) -> Bitboard {
+    ORTHOGONAL_ATTACKER_ZONE[king.array_index()]
+}
+
+/// Where a bishop or horse has to stand to attack a neighbour of `king`
+/// **along a diagonal**; see [`DIAGONAL_ATTACKER_ZONE`]. A horse's orthogonal
+/// step is [`step_attacker_zone`]'s to cover.
+#[inline(always)]
+pub(crate) fn diagonal_attacker_zone(king: Square) -> Bitboard {
+    DIAGONAL_ATTACKER_ZONE[king.array_index()]
 }
 
 /// The four orthogonally adjacent squares (the promoted bishop's extra steps).
@@ -702,6 +771,101 @@ mod tests {
         assert!(covered > 10_000, "test exercised only {covered} attacks");
     }
 
+    /// The slider half of the same property, and the whole licence for
+    /// `king_danger` to filter sliders at all: if an enemy slider attacks a
+    /// neighbour of the king, it stands in the zone its line family names —
+    /// or, for the two promoted sliders' *step* halves, in
+    /// `STEP_ATTACKER_ZONE`, which is why `king_danger` keeps that term for
+    /// every piece and not only the non-sliders.
+    ///
+    /// Exhaustive over every king square, every neighbour, every origin, both
+    /// colours and all five slider kinds. An **empty** board is the whole
+    /// story because a slider's attacks are monotone in occupancy — asserted
+    /// here rather than assumed, since the superset direction is the only one
+    /// `king_danger` may err in and nothing else in the suite pins it.
+    #[test]
+    fn slider_attacker_zones_cover_every_slider() {
+        let slider_kinds = [
+            PieceKind::Lance,
+            PieceKind::Bishop,
+            PieceKind::Rook,
+            PieceKind::ProBishop,
+            PieceKind::ProRook,
+        ];
+        // Occupancy monotonicity, which is what makes the sweep below sound.
+        let mut occupancies = vec![Bitboard::EMPTY, Bitboard::ALL];
+        let mut state = 0x0053_4855_4e53_4149u64;
+        for _ in 0..64 {
+            let mut bits = 0u128;
+            for _ in 0..2 {
+                state = state
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
+                bits = (bits << 64) | state as u128;
+            }
+            occupancies.push(Bitboard::ALL & Bitboard::from_bits(bits & ((1 << 81) - 1)));
+        }
+        for &piece_kind in &slider_kinds {
+            for color in Color::all() {
+                let piece = Piece::new(piece_kind, color);
+                for from in Square::all() {
+                    let unblocked = attacks_of(piece, from, Bitboard::EMPTY);
+                    for &occupied in &occupancies {
+                        assert_eq!(
+                            attacks_of(piece, from, occupied) & !unblocked,
+                            Bitboard::EMPTY,
+                            "{piece:?} on {from:?} attacks more with blockers than without"
+                        );
+                    }
+                }
+            }
+        }
+
+        // How often the step term is the *only* thing that catches a
+        // promoted slider. If this is zero the term looks removable, and
+        // removing it is a silent bug that no perft value would report.
+        let mut step_only = 0;
+        let mut covered = 0;
+        for king in Square::all() {
+            let steps = step_attacker_zone(king);
+            let orthogonal = steps | orthogonal_attacker_zone(king);
+            let diagonal = steps | diagonal_attacker_zone(king);
+            for to in king_attacks(king) {
+                for from in Square::all() {
+                    for color in Color::all() {
+                        for piece_kind in slider_kinds {
+                            let piece = Piece::new(piece_kind, color);
+                            if !attacks_of(piece, from, Bitboard::EMPTY).contains(to) {
+                                continue;
+                            }
+                            // Exactly the membership test `king_danger` makes.
+                            let (zone, rays) = match piece_kind {
+                                PieceKind::Bishop | PieceKind::ProBishop => {
+                                    (diagonal, diagonal_attacker_zone(king))
+                                }
+                                _ => (orthogonal, orthogonal_attacker_zone(king)),
+                            };
+                            assert!(
+                                zone.contains(from),
+                                "{piece:?} on {from:?} attacks {to:?} next to king {king:?}, \
+                                 but {from:?} is outside the zone"
+                            );
+                            if !rays.contains(from) {
+                                step_only += 1;
+                            }
+                            covered += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert!(covered > 10_000, "test exercised only {covered} attacks");
+        assert!(
+            step_only > 0,
+            "no slider was caught by the step zone alone; the step term looks removable"
+        );
+    }
+
     /// The zone is a *superset*, so it may not be so tight that the sliders
     /// it excludes were the only reason it looked correct — and it must not
     /// be the whole board either, or it would filter nothing.
@@ -714,6 +878,42 @@ mod tests {
             assert!(step_attacker_zone(king).contains(king));
             assert!(step_attacker_zone(king).count() < 81);
         }
+    }
+
+    /// Same demand on the slider zones: a filter that admits everything is
+    /// not a filter, and `slider_attacker_zones_cover_every_slider` alone
+    /// would happily pass on `Bitboard::ALL`. These are the numbers the
+    /// expected saving was computed from, so a change to the geometry that
+    /// widens them should have to be noticed.
+    #[test]
+    fn slider_attacker_zones_are_bounded() {
+        let (mut orthogonal, mut diagonal) = (0, 0);
+        for king in Square::all() {
+            let (o, d) = (orthogonal_attacker_zone(king), diagonal_attacker_zone(king));
+            // A slider adjacent to the king bears on its neighbours from
+            // either family, so both zones contain the king itself.
+            assert!(o.contains(king) && d.contains(king), "{king:?}");
+            assert!(
+                o.count() < 81 && d.count() < 81,
+                "{king:?} admits the board"
+            );
+            orthogonal += o.count() as usize;
+            diagonal += d.count() as usize;
+        }
+        // Exact totals, not `sum / 81`: the truncating mean would accept any
+        // orthogonal total in 3402..=3482, i.e. it would let the zones grow by
+        // 57 squares without noticing, which is the opposite of what this test
+        // is for. Means are 42.3 and 44.7 of 81 squares.
+        assert_eq!(orthogonal, 3425);
+        assert_eq!(diagonal, 3617);
+        // The extremes the means average over, in the shape
+        // `step_attacker_zone_is_bounded` uses. The centre is where the
+        // diagonal zone is weakest — 65 of 81 squares, against 26 in a corner
+        // — so the filter earns most of its keep with the king still at home.
+        assert_eq!(orthogonal_attacker_zone(sq(5, 5)).count(), 45);
+        assert_eq!(orthogonal_attacker_zone(sq(1, 1)).count(), 32);
+        assert_eq!(diagonal_attacker_zone(sq(5, 5)).count(), 65);
+        assert_eq!(diagonal_attacker_zone(sq(1, 1)).count(), 26);
     }
 
     #[test]
