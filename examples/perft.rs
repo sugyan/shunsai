@@ -72,8 +72,8 @@ fn perft_materialize(position: &mut Position, depth: u32, buf: &mut Vec<Move>) -
     let base = buf.len();
     let _ = position.generate_moves(|set| {
         // `write_into` rather than `buf.extend(set)`: same moves in the same
-        // order, but it decides drop-versus-board once per set instead of
-        // once per move.
+        // order, decided once per set instead of once per move. Measured by
+        // `movegen/*-wi` against `movegen/*-buf`.
         set.write_into(buf);
         ControlFlow::Continue(())
     });
@@ -141,8 +141,7 @@ fn main() {
             perft(&mut position, d)
         };
         let elapsed = start.elapsed();
-        // Six decimals: shallow depths now finish in single-digit
-        // milliseconds, where three would quantize the result away.
+        // Six decimals: three would quantize the shallow depths away.
         println!(
             "perft({d}) = {nodes} ({:.6}s, {:.0} Mnps)",
             elapsed.as_secs_f64(),

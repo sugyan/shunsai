@@ -1,8 +1,7 @@
-//! Attack tables and naive slider attacks.
+//! Const attack, ray, between, line and zone tables.
 //!
-//! Step-piece attacks are const-evaluated per square; slider attacks walk
-//! rays square by square. Replacing the latter with Qugiy/magic
-//! implementations is a later, benchmark-driven decision.
+//! Slider attacks are not here — [`crate::sliders`] owns them, and this
+//! module re-exports whichever backend is live.
 //!
 //! The table builders work on raw [`Square::array_index`] arithmetic rather
 //! than [`Square::shift`], which is not a `const fn`. Every const table is
@@ -140,7 +139,9 @@ static DIAGONAL_ATTACKS: [Bitboard; 81] = step_table(&DIAGONAL_STEPS);
 /// The one caller is the sniper scan in `check_info`, which asks "which enemy
 /// sliders would reach the king if nothing were in the way" and then counts
 /// blockers. Nothing there varies with occupancy, so going through the live
-/// slider backend pays a general mechanism for a constant. The guard
+/// slider backend pays a general mechanism for a constant. All three
+/// together are ~5 KiB against the magic backend's ~486 KiB, which is what
+/// makes carrying them alongside it worth it. The guard
 /// `empty_board_rays_match_the_naive_backend` holds each entry to
 /// `sliders::naive` over all 81 squares.
 static ROOK_RAYS: [Bitboard; 81] = ray_table(&ORTHOGONAL_STEPS);
@@ -166,7 +167,10 @@ static LANCE_RAYS: [[Bitboard; 81]; 2] = ray_table_both(PAWN_STEPS);
 ///
 /// This duplicates the per-kind tables above rather than replacing them: the
 /// reverse-lookup scans in `movegen` want a specific kind's table for a known
-/// colour, where a two-row table is the better shape.
+/// colour, where a two-row table is the better shape. The duplication costs
+/// 40.5 KiB of `.rodata` — the budget any further piece-indexed table is
+/// spent against, and the input to the deferred magic-versus-qugiy re-run
+/// under cache pressure (DECISIONS.md).
 static STEP_ATTACKS: [[Bitboard; 81]; 32] = step_attacks_table();
 
 const fn step_attacks_table() -> [[Bitboard; 81]; 32] {
@@ -1124,9 +1128,10 @@ mod tests {
         }
     }
 
-    /// `attacks_of` folds nine kinds into one indexed row, so hold it to the
-    /// per-kind tables over **every** piece and square, on an empty board and
-    /// on populated ones.
+    /// `attacks_of` reaches the nine non-slider kinds through one indexed
+    /// load instead of a per-kind `match`, so hold it to the per-kind tables
+    /// over **every** piece and square, on an empty board and on populated
+    /// ones.
     ///
     /// This is the test that catches a mis-filed [`STEP_ATTACKS`] row (a gold
     /// row under `ProSilver`, a colour swapped, `orthogonal` and `diagonal`

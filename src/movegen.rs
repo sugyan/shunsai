@@ -33,7 +33,7 @@ use crate::tables;
 /// the max-moves fixture in DESIGN.md §6.
 ///
 /// [`Position::legal_moves`] sizes its `Vec` from this so no caller pays a
-/// growth realloc; the drop-heavy positions were paying three of them.
+/// growth realloc, which the drop-heavy positions would otherwise pay.
 const MAX_LEGAL_MOVES: usize = 593;
 
 /// A group of legal moves that share an origin, as handed to
@@ -86,8 +86,10 @@ impl MoveSet {
     /// which [`MoveSetIter`] cannot do. Prefer the iterator for consuming
     /// lazily or stopping early, and this for filling a buffer.
     ///
-    /// Deliberately does not `reserve`: it is meant for callers that own and
-    /// reuse a sized buffer, where there is no reallocation to avoid.
+    /// Deliberately does not `reserve`. `Vec::push` checks capacity per
+    /// element either way, so reserving only avoids a reallocation — and this
+    /// method is for callers that own a sized buffer, where there is none to
+    /// avoid. Measured and rejected; DECISIONS.md has it.
     #[inline]
     pub fn write_into(self, out: &mut Vec<Move>) {
         match self {
@@ -668,33 +670,40 @@ mod tests {
         assert!(!position.in_check());
     }
 
-    /// Each entry is here for one configuration the others do not reach. The
-    /// liveness assertions in the tests below fail if a fixture stops
-    /// covering its case, so removing one is loud rather than silent.
+    /// Which fixture covers what, and whether anything would notice its
+    /// removal. Four are individually held by a named liveness assertion; two
+    /// jointly hold one; two are corpus breadth, and dropping either of those
+    /// is silent.
     const CALLBACK_POSITIONS: &[&str] = &[
+        // Breadth: the ordinary opening shape, and the only position where
+        // nothing can promote.
         "startpos",
-        // Matsuri midgame position: heavy hands, many drops.
+        // Breadth, and the corpus's bulk — supplies almost all of the
+        // `dropped * 8 > nodes` margin in
+        // `king_danger_agrees_with_the_unfiltered_scan`.
         "l6nl/5+P1gk/2np1S3/p1p4Pp/3P2Sp1/1PPb2P1P/P5GS1/R8/LN4bKL w GR5pnsg 1",
-        // Max legal moves.
+        // Breadth: drop-heavy, and most of the node count.
         "R8/2K1S1SSk/4B4/9/9/9/9/9/1L1L1L3 b RBGSNLP3g3n17p 1",
-        // In check (a real game position): a bishop on 7g checks the king on
-        // 5i, so the evasion path is covered.
+        // In check (a real game position), and — after Bx6h+ — the corpus's
+        // only enemy *horse* held by the step term alone. Held by
+        // `assert!(horse_only > 0)`.
         "lnsgk2nl/1r4gs1/p1pppp1pp/6p2/1p5P1/2P6/PPbPPPP1P/2G2G1R1/LNS1K1SNL b b 15",
-        // Double check by two *sliders* (rook 5b, bishop 3c, king 5e): the
-        // only case where `check_info`'s `checkers |=` differs from `=`.
+        // Two unblocked snipers checking at once (rook 5b, bishop 3c, king
+        // 5e), which is what makes `check_info`'s `checkers |=` differ from
+        // `=`. Held by `assert!(doubles > 0)`, jointly with the next-but-one.
         "8k/4r4/6b2/7G1/4K4/9/9/9/9 b - 1",
-        // Two pins at once, not in check (rook 5a pins the gold, bishop 2b
-        // the silver): the same demand on `pinned |=`.
+        // Two snipers pinning at once (rook 5a pins the gold, bishop 2b the
+        // silver): the same demand on `pinned |=`. Held by
+        // `assert!(double_pins > 0)`, which nothing else satisfies.
         "4r4/7b1/9/4GS3/4K4/9/9/9/8k b - 1",
-        // The only fixture with *promoted* sliders bearing on the king by
-        // sliding: a dragon on 4a covers 4i, a horse on 1c covers 6h, and
-        // both stand outside the king's step-attacker box.
+        // Promoted sliders bearing on the king by *sliding* — a dragon on 4a
+        // covers 4i, a horse on 1c covers 6h, both outside the step-attacker
+        // box. Also the second source of `doubles`.
         "k4+R3/9/8+B/9/9/9/9/9/4K4 b - 1",
-        // A dragon held by the *step* term alone — 3g is inside
-        // `STEP_ATTACKER_ZONE` and outside `ORTHOGONAL_ATTACKER_ZONE`, and
-        // what reaches 4h is its diagonal sidestep. Restricting that term to
-        // the non-sliders makes 4h a legal king move, and this is the only
-        // position in the list that catches it.
+        // The corpus's only enemy *dragon* held by the step term alone: 3g is
+        // inside `STEP_ATTACKER_ZONE` and outside `ORTHOGONAL_ATTACKER_ZONE`,
+        // and what reaches 4h is its diagonal sidestep. Held by
+        // `assert!(dragon_only > 0)`.
         "4k4/9/9/9/9/9/6+r2/9/4K4 b - 1",
     ];
 
@@ -833,9 +842,9 @@ mod tests {
         assert!(!position.has_legal_moves());
     }
 
-    /// `king_danger` as it stood before the slider filter — every enemy
-    /// slider walked wherever it stands. Kept as a test-only oracle, the way
-    /// `sliders::naive` is kept for the slider backends.
+    /// The unfiltered danger scan: every enemy slider walked wherever it
+    /// stands. A test-only oracle, the way `sliders::naive` is kept for the
+    /// slider backends.
     fn king_danger_reference(
         position: &Position,
         us: Color,
@@ -868,17 +877,20 @@ mod tests {
     /// would have changed a move.
     #[test]
     fn king_danger_agrees_with_the_unfiltered_scan() {
-        /// `step_only` counts the nodes where an enemy *promoted* slider is
-        /// held by the step term alone — inside `STEP_ATTACKER_ZONE`, outside
-        /// its own ray zone — which is the one configuration distinguishing
-        /// "the step term applies to every enemy piece" from "... to the
-        /// non-sliders".
+        /// `dragon_only` / `horse_only` count the nodes where an enemy dragon
+        /// or horse is held by the step term alone — inside
+        /// `STEP_ATTACKER_ZONE`, outside its own ray zone. That is the one
+        /// configuration distinguishing "the step term applies to every enemy
+        /// piece" from "... to the non-sliders", and the two halves come from
+        /// different fixtures, so they are counted separately: one assertion
+        /// over both would be satisfied by either alone.
         fn walk(
             position: &mut Position,
             depth: u32,
             nodes: &mut u64,
             dropped: &mut u64,
-            step_only: &mut u64,
+            dragon_only: &mut u64,
+            horse_only: &mut u64,
         ) {
             let us = position.side_to_move();
             if let Some(king) = position.king_square(us) {
@@ -912,8 +924,11 @@ mod tests {
                 // holding one.
                 let dragons = rooks & position.piece_kind_bb(PieceKind::ProRook);
                 let horses = bishops & position.piece_kind_bb(PieceKind::ProBishop);
-                if !((dragons & steps & !orthogonal) | (horses & steps & !diagonal)).is_empty() {
-                    *step_only += 1;
+                if !(dragons & steps & !orthogonal).is_empty() {
+                    *dragon_only += 1;
+                }
+                if !(horses & steps & !diagonal).is_empty() {
+                    *horse_only += 1;
                 }
                 *nodes += 1;
             }
@@ -922,40 +937,52 @@ mod tests {
             }
             for mv in position.legal_moves() {
                 position.do_move(mv);
-                walk(position, depth - 1, nodes, dropped, step_only);
+                walk(position, depth - 1, nodes, dropped, dragon_only, horse_only);
                 position.undo_move(mv);
             }
         }
         let mut nodes = 0;
         let mut dropped = 0;
-        let mut step_only = 0;
+        let mut dragon_only = 0;
+        let mut horse_only = 0;
         for sfen in CALLBACK_POSITIONS {
             let mut position = position_of(sfen);
-            walk(&mut position, 2, &mut nodes, &mut dropped, &mut step_only);
+            walk(
+                &mut position,
+                2,
+                &mut nodes,
+                &mut dropped,
+                &mut dragon_only,
+                &mut horse_only,
+            );
         }
         assert!(nodes > 10_000, "test covered only {nodes} nodes");
-        // The bar is a quarter of the rate this corpus actually achieves, so
-        // it fails on a filter that has quietly become a no-op rather than on
-        // ordinary fixture drift.
+        // A filter that has quietly become a no-op drops nothing; this fails
+        // on that rather than on ordinary fixture drift.
         assert!(
             dropped * 8 > nodes,
             "only {dropped} sliders dropped over {nodes} nodes; the filter is barely exercised"
         );
-        // The configuration that distinguishes the code from its
-        // plausible-looking mutation has to be reached, or the agreement
-        // above is silently about something else. Both halves are rare, so a
-        // fixture list that drifts must fail here rather than stop covering
-        // it.
+        // Restricting the step term to the non-sliders is the tidying
+        // `king_danger` warns against, and only these two configurations
+        // distinguish it. Each comes from one fixture, so both are asserted:
+        // dropping either fixture must fail here rather than quietly stop
+        // covering its half.
         assert!(
-            step_only > 0,
-            "no enemy dragon or horse was ever held by the step term alone; \
-             restricting that term to the non-sliders would pass"
+            dragon_only > 0,
+            "no enemy dragon was held by the step term alone; \
+             the dragon fixture is no longer covering its case"
+        );
+        assert!(
+            horse_only > 0,
+            "no enemy horse was held by the step term alone; \
+             the in-check fixture is no longer covering its case"
         );
     }
 
-    /// The pin scan as it stood before `check_info` fused the checker search
-    /// into it — kept as a test-only oracle, the way `sliders::naive` is kept
-    /// for the slider backends.
+    /// The standalone pin scan, without the checker search fused into it —
+    /// a test-only oracle, the way `sliders::naive` is kept for the slider
+    /// backends.
     fn pinned_pieces_reference(
         position: &Position,
         us: Color,
@@ -984,16 +1011,43 @@ mod tests {
         pinned & position.player_bb(us)
     }
 
+    /// The enemy sliders that reach `king` with nothing in between — the
+    /// zero-blocker case of `check_info`'s sniper loop.
+    fn unblocked_snipers(position: &Position, us: Color, king: Square) -> Bitboard {
+        let occupied = position.occupied();
+        let their = position.player_bb(us.flip());
+        let rooks = (position.piece_kind_bb(PieceKind::Rook)
+            | position.piece_kind_bb(PieceKind::ProRook))
+            & their;
+        let bishops = (position.piece_kind_bb(PieceKind::Bishop)
+            | position.piece_kind_bb(PieceKind::ProBishop))
+            & their;
+        let lances = position.piece_kind_bb(PieceKind::Lance) & their;
+        let snipers = (tables::rook_rays(king) & rooks)
+            | (tables::bishop_rays(king) & bishops)
+            | (tables::lance_rays(us, king) & lances);
+        let mut unblocked = Bitboard::EMPTY;
+        for sniper in snipers {
+            if (tables::between(king, sniper) & occupied).is_empty() {
+                unblocked |= Bitboard::single(sniper);
+            }
+        }
+        unblocked
+    }
+
     /// `check_info` folds the slider half of the checker search into the pin
-    /// scan, so *both* halves must stay what they replaced: `checkers`
+    /// scan, so *both* halves are held to an independent oracle: `checkers`
     /// against the general `attackers_to` reverse lookup, and `pinned`
-    /// against the standalone scan. Held over every position two plies deep
+    /// against the standalone scan above. Held over every position two plies deep
     /// from each fixture.
     #[test]
     fn check_info_agrees_with_attackers_to() {
         /// `doubles` / `double_pins` count the configurations that make the
-        /// sniper loop's two `|=` meaningful: more than one checker, and more
-        /// than one sniper pinning.
+        /// sniper loop's two `|=` meaningful, and both are counted over
+        /// *snipers* rather than over the resulting bitboards: a double check
+        /// by one slider and one step piece raises `checkers.count()` without
+        /// ever running the loop twice, so counting checkers would let the
+        /// `|=` go untested.
         fn walk(
             position: &mut Position,
             depth: u32,
@@ -1017,7 +1071,7 @@ mod tests {
                     pinned_pieces_reference(position, us, king, occupied),
                     "pinned disagrees in\n{position:?}"
                 );
-                if info.checkers.count() >= 2 {
+                if unblocked_snipers(position, us, king).count() >= 2 {
                     *doubles += 1;
                 }
                 if info.pinned.count() >= 2 {
