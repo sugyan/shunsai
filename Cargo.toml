@@ -2,6 +2,9 @@
 name = "shunsai"
 version = "0.1.0"
 edition = "2024"
+# Let-chains, not the edition, set this floor: edition 2024 alone would build
+# on 1.85. CI holds it.
+rust-version = "1.88"
 authors = ["sugyan"]
 description = "Fast shogi legal move generator — SHogi's Ultra-fast Next-gen Successor, for AI"
 license = "MIT OR Apache-2.0"
@@ -9,6 +12,22 @@ repository = "https://github.com/sugyan/shunsai"
 readme = "README.md"
 keywords = ["shogi", "move-generation", "bitboard", "game", "usi"]
 categories = ["game-development", "algorithms"]
+# The published crate is the library. The project's own record (DESIGN,
+# DECISIONS, BENCHMARKS), the fixtures and the committed measurement history
+# are for people working in the repository, and are the bulk of the tree.
+include = [
+    "src/**/*.rs",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE-MIT",
+    "LICENSE-APACHE",
+]
+
+[package.metadata.docs.rs]
+# Default features, deliberately: `--all-features` turns on `slider-naive`,
+# which wins the priority order in src/sliders.rs, so docs.rs would document a
+# build that calls the oracle backend rather than the one that ships.
+all-features = false
 
 [features]
 # Exposes crate internals to `benches/` only (see `src/internals.rs`).

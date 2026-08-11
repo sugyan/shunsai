@@ -19,6 +19,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --check
       - run: cargo clippy --all-targets --all-features -- -D warnings
+      # `--all-features` above turns on `slider-naive`, which wins the priority
+      # order in src/sliders.rs — so that run lints the oracle backend, not the
+      # one that ships. This lints what ships.
+      - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
       # Compile the criterion benches; never run/measure them in CI.
       - run: cargo bench --no-run --all-features
@@ -31,6 +35,9 @@ jobs:
       # rustdoc is the only tool that notices. `--all-features` so the
       # feature-gated modules are documented too.
       - run: RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --document-private-items --all-features
+      # What crates.io would receive. Catches an `include` that drops a file
+      # the build needs, which is otherwise discovered at publish time.
+      - run: cargo publish --dry-run
 
   # Deep perft (initial position depth 5/6) is #[ignore]d in the normal run.
   perft-deep:
@@ -40,3 +47,13 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --release -- --ignored
+
+  # `rust-version` is a promise to consumers; nothing else checks it. The lib
+  # alone, because dev-dependencies do not constrain what a consumer needs.
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88.0
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --lib
