@@ -1,5 +1,9 @@
 # shunsai
 
+[![CI](https://github.com/sugyan/shunsai/actions/workflows/ci.yml/badge.svg)](https://github.com/sugyan/shunsai/actions/workflows/ci.yml)
+[![crates.io](https://img.shields.io/crates/v/shunsai.svg)](https://crates.io/crates/shunsai)
+[![docs.rs](https://docs.rs/shunsai/badge.svg)](https://docs.rs/shunsai)
+
 **Fast shogi legal move generator — SHogi's Ultra-fast Next-gen Successor, for AI.**
 
 `shunsai` is a Rust library for high-speed generation of legal moves in [Shogi](https://en.wikipedia.org/wiki/Shogi). It is the successor to [`sugyan/yasai`](https://github.com/sugyan/yasai) ("Yet Another Shogi library, for AI"), redesigned from the inside out to be one of the fastest shogi move generators in Rust.
@@ -7,6 +11,41 @@
 > ⚠️ **Status: M4 largely done; M5 met.** Fully legal move generation (including pawn-drop-mate exclusion), validated against known perft values and differential-tested against `shogi_legality_lite`. Optimizations are adopted by measurement against the committed benchmark history — including the ones that measured neutral and were kept for other reasons, which [DECISIONS.md](./DECISIONS.md) records as such.
 >
 > Against [haitaka](https://github.com/tofutofu/haitaka) — the main rival, and the only engine measured on the same leaf-counting convention — shunsai is ahead on **all three** fixture positions; apery_rust is beaten on all three too. Against the C++ engines, read only the **materializing** convention, where shunsai is fastest of nine on the midgame and max-moves positions and second on the initial position. Full tables and the convention caveat: [BENCHMARKS.md](./BENCHMARKS.md).
+
+## Usage
+
+```toml
+[dependencies]
+shunsai = "0.1"
+```
+
+Everything generated is fully legal, pawn-drop mate (打ち歩詰め) included, so a caller never filters what it is handed.
+
+```rust
+use shunsai::Position;
+
+let position = Position::startpos();
+assert_eq!(position.legal_moves().len(), 30);
+```
+
+`legal_moves()` is the convenient path. The fast one hands you a `MoveSet` per origin square with the destinations still packed as a bitboard, so code that only needs to count them never builds a `Move` — and can stop early by returning `ControlFlow::Break`:
+
+```rust
+use core::ops::ControlFlow;
+use shunsai::Position;
+
+let position = Position::startpos();
+let mut moves = 0;
+let _ = position.generate_moves(|set| {
+    moves += set.len();
+    ControlFlow::Continue(())
+});
+assert_eq!(moves, 30);
+```
+
+For the shape of a real consumer, `examples/search.rs` is a fixed-depth alpha-beta built on the public API alone.
+
+Minimum supported Rust version: **1.88**.
 
 ## Concept
 
