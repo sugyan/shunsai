@@ -28,7 +28,7 @@ The project license is **`MIT OR Apache-2.0`**. To keep it clean, obey the follo
 - When reusing from MIT sources, **retain the copyright notices**
 
 **Must not reference / copy (GPL-3.0)**
-- **apery / apery_rust / YaneuraOu / cshogi / rshogi / Fairy-Stockfish / the old yasai** (present under `../benchmarks/` — a **local-only, unpublished** sibling repo, not part of this repository — all GPL)
+- **apery / apery_rust / YaneuraOu / cshogi / rshogi / Fairy-Stockfish / the old yasai** (checked out in a **local-only, unpublished** sibling repository, not part of this one — all GPL)
 - Understanding the technique and **writing it yourself** is fine, but **do not read-and-copy or port the code verbatim** (that inherits GPLv3).
 - ⚠️ The old yasai is sugyan's own work but is **GPL-3.0** (derived from apery_rust). Porting yasai's code is **also forbidden** — reimplement it to stay permissive.
 
@@ -50,7 +50,9 @@ See "7. Licensing policy" in [DESIGN.md](./DESIGN.md) for the rationale.
 
 ## Benchmarks
 
-Measure perft / movegen / do-undo with `criterion`. Comparison targets are pinned submodules in `../benchmarks` — a **local-only, unpublished sibling repository** (no remote; not visible from this GitHub repo — see its README when working locally). Goal: **beat haitaka / apery_rust**.
+Measure perft / movegen / do-undo with `criterion`. Comparison targets are pinned submodules in a **local-only, unpublished sibling repository** (no remote; not visible from this GitHub repo — see its README when working locally). Goal: **beat haitaka / apery_rust**.
+
+⚠️ **Nothing in this repository may point at that checkout.** Not a path in a document, and above all not a script or CI step that needs it to run — it exists on one machine, so such a thing is unrunnable for everyone else and rots unwatched. Apparatus that needs the corpus belongs *in* that repository; this one keeps the result. **This is not a CI step, deliberately**: only a checkout that *has* the corpus can introduce such a path, so the check belongs where that checkout is, not in a job every contributor pays for. A local hook does it on edit.
 
 Method, fixtures, how to quiet the machine, and what makes a run recordable are in [BENCHMARKS.md](./BENCHMARKS.md). Read its "Standing rules" counterpart in [DECISIONS.md](./DECISIONS.md) before trusting a measurement — this machine's single-shot timings scatter far enough to invent a result.
 

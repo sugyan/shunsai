@@ -3,14 +3,14 @@
 Everything about measuring `shunsai`: the method, the in-repo criterion suite,
 the fixtures, the committed history, and the cross-engine standing.
 
-The comparison *targets* are pinned submodules in the local-only
-`../benchmarks` repository (see [DESIGN.md](./DESIGN.md) §5); why a given
-result was adopted or rejected is in [DECISIONS.md](./DECISIONS.md).
+The comparison *targets* are pinned submodules in the local-only benchmarks
+repository (see [DESIGN.md](./DESIGN.md) §5); why a given result was adopted
+or rejected is in [DECISIONS.md](./DECISIONS.md).
 
 ## Method
 
 - **Metrics**: (1) **perft** (nodes/sec; also a correctness check); (2) **movegen alone** (ns per position); (3) **do/undo throughput**.
-- **Tooling**: `criterion` in-repo; the cross-engine perft harness in `../benchmarks/perft`.
+- **Tooling**: `criterion` in-repo; the cross-engine perft harness in the benchmarks repository.
 - **Conditions**: `--release` / `lto = "fat"` / `codegen-units = 1`; same machine; with warm-up; a fixed position set; multiple trials with variance recorded; CPU architecture (x86_64 / aarch64) noted.
 - **Position set (fixed SFEN)**:
   - initial position
@@ -282,8 +282,8 @@ meta) and regenerates the table below from all history files. Commit both.
 
 ## Cross-engine standing
 
-Run from the local-only `../benchmarks/perft` harness, which shares no code
-with criterion:
+Run from the local-only benchmarks repository's perft harness, which shares
+no code with criterion:
 
 ```bash
 ./perft --measure --repeat 5

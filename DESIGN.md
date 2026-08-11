@@ -38,7 +38,7 @@ Don't pick Qugiy or SIMD up front. First get a **simple, correct implementation*
 - Correctness is guaranteed by matching the known perft values (see §6).
 
 ### Phase 2: benchmark harness
-- Measure perft / movegen / do-undo with `criterion`. Wire it into the local `../benchmarks` checkout (see §5) and compare side-by-side against the old yasai, haitaka, and apery_rust.
+- Measure perft / movegen / do-undo with `criterion`. Wire it into the local benchmarks checkout (see §5) and compare side-by-side against the old yasai, haitaka, and apery_rust.
 - Record the naive implementation as the **baseline**.
 
 ### Phase 3: optimization candidates, adopted by benchmark comparison
@@ -78,7 +78,7 @@ of the callback API, but it is one perft collects and a search cannot.
 
 ## 5. Comparison targets
 
-(submodules under `../benchmarks` — a **local-only, unpublished** sibling git repository with no remote. It is not part of the shunsai repository and is never distributed, which is also why GPL projects may live there for benchmarking.)
+(submodules of a **local-only, unpublished** sibling git repository with no remote. It is not part of the shunsai repository and is never distributed, which is also why GPL projects may live there for benchmarking.)
 
 | Category | Library | Role | License | Pin (as of 2026-07-22) | Upstream |
 |---|---|---|---|---|---|
@@ -91,7 +91,7 @@ of the callback API, but it is one perft collects and a search cannot.
 | Reference ceiling (C++) | apery | A sense of "how close can we get" | GPL-3.0 | WCSC28+36 (2021-09-21) | dormant |
 | Reference (practical) | cshogi | Comparison with a practical Python stack | GPL-3.0 | v1.0.4 (2026-07-18) | active |
 
-**Pinning / update policy**: the `../benchmarks` (local-only) submodules are **pinned** commits recorded in that repository (see its README). Comparison numbers are only meaningful against a recorded pin. Updates are deliberate: bump a submodule intentionally, record the new pin and date, and re-run baselines — never benchmark against a silently-drifted checkout. Dormant upstreams (apery, apery_rust, yasai, haitaka) double as stable, reproducible targets.
+**Pinning / update policy**: those (local-only) submodules are **pinned** commits recorded in that repository (see its README). Comparison numbers are only meaningful against a recorded pin. Updates are deliberate: bump a submodule intentionally, record the new pin and date, and re-run baselines — never benchmark against a silently-drifted checkout. Dormant upstreams (apery, apery_rust, yasai, haitaka) double as stable, reproducible targets.
 
 Correctness oracle (not a speed target): [`shogi_legality_lite`](https://github.com/rust-shogi-crates/shogi_legality_lite) (MIT, same `shogi_core` types) — see §6.
 
@@ -99,7 +99,7 @@ Correctness oracle (not a speed target): [`shogi_legality_lite`](https://github.
 
 - **M0 (done)**: name & concept fixed; design documents. Licensing policy decided.
 - **M1 (done)**: **simple, correct implementation** (Position + naive movegen) matching known perft values.
-- **M2 (done)**: benchmark harness (criterion + `../benchmarks` integration); record the naive implementation as baseline. In-repo suite documented in [BENCHMARKS.md](./BENCHMARKS.md); cross-engine baseline recorded 2026-07-23 in the local benchmarks repository (§5).
+- **M2 (done)**: benchmark harness (criterion + cross-engine integration); record the naive implementation as baseline. In-repo suite documented in [BENCHMARKS.md](./BENCHMARKS.md); cross-engine baseline recorded 2026-07-23 in the local benchmarks repository (§5).
 - **M3 (done)**: move-generation API refined into the callback form — `Position::generate_moves(|MoveSet| -> ControlFlow<()>)`, with `legal_moves()` kept as the allocating wrapper. Measured under the append-only `-cb` bench ids beside the `Vec` ones.
 - **M4 (in progress)**: evaluate optimization candidates and **adopt by benchmark comparison**. Every adoption, every rejected candidate, and the open list are in [DECISIONS.md](./DECISIONS.md); the numbers are in [BENCHMARKS.md](./BENCHMARKS.md) and `benches/history/*.json`. What remains is profiling-led rather than guessed.
 - **M5 (met 2026-08-06)**: numerically confirm we **beat** haitaka / apery_rust on perft. Met — both are ahead-of on all three fixture positions. The criterion is a like-for-like comparison, so it is read on the **materializing** convention against every engine except haitaka, which is the one that shares shunsai's count-only convention. Standing and tables: [BENCHMARKS.md](./BENCHMARKS.md).
@@ -181,6 +181,6 @@ Most of the code will be written by AI (Claude Code). The question is not "was G
   - Treat its API as frozen — depend only on what 0.1.5 already provides; do not plan around hoped-for upstream changes.
   - If a blocking bug or missing capability appears, it is MIT: forking (or vendoring the needed types) is an acceptable fallback that preserves the "swap the dependency" migration story for `tsumeshogi-solver`.
 - **Perft-convention mismatches can fake regressions or wins.** Pawn-drop-mate handling and leaf bulk-counting differ across libraries (see [BENCHMARKS.md](./BENCHMARKS.md) and §6). Every cross-library number must state the convention used; never compare numbers produced under different conventions.
-- **Benchmark-target drift.** Comparison targets are pinned submodules in `../benchmarks`; results are only comparable against a recorded pin (see §5 pinning policy). Active upstreams (YaneuraOu, cshogi, rshogi, Fairy-Stockfish) will move — bump deliberately and re-baseline.
+- **Benchmark-target drift.** Comparison targets are pinned submodules of the local benchmarks repository; results are only comparable against a recorded pin (see §5 pinning policy). Active upstreams (YaneuraOu, cshogi, rshogi, Fairy-Stockfish) will move — bump deliberately and re-baseline.
 - **Feasibility of the "beat haitaka / apery_rust" goal** (assessed 2026-07-22): haitaka self-describes as experimental (no engine adoption yet, tuned and tested mainly on Apple M2, no hand-written SIMD); yasai demonstrated that hand-tuned SIMD is competitive with apery_rust. Combining haitaka-style const tables / Qugiy with yasai-style SIMD (reimplemented, per §7) leaves clear headroom, so the goal is considered achievable — but it is validated empirically at M5, not assumed.
   - ⚠️ **Every recorded win over haitaka is on Apple Silicon, which is the family haitaka was tuned for.** The x86-64 re-run scheduled for engine phase E4 (see [DECISIONS.md](./DECISIONS.md), 2026-07-31) is where that caveat gets tested; state it whenever the M5 result is quoted outside this repository.
