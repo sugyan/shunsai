@@ -11,13 +11,12 @@
 //! ## What is generated, and what is not
 //!
 //! Only the **multipliers** are generated ([`super::magics`], produced by our
-//! own [`gen_magics`](../../examples/gen_magics.rs)) — a multiplier is the
-//! result of a search and cannot be derived. Everything else about a [`Magic`]
-//! *can* be, so it is: [`derive_magics`] recomputes the mask and both shifts
-//! from [`super::relevant_mask`], the crate's own geometry, and the attack
-//! tables are const-evaluated on top. So the generated file cannot drift out
-//! of step with the board, and no table is ever transcribed from another
-//! project.
+//! own `examples/gen_magics.rs`) — a multiplier is the result of a search and
+//! cannot be derived. Everything else about a [`Magic`] *can* be, so it is:
+//! [`derive_magics`] recomputes the mask and both shifts from
+//! [`super::relevant_mask`], the crate's own geometry, and the attack tables
+//! are const-evaluated on top. So the generated file cannot drift out of step
+//! with the board, and no table is ever transcribed from another project.
 //!
 //! A multiplier that does *not* work is caught by [`line_table`], which
 //! rejects at compile time any two occupancies that share a slot without

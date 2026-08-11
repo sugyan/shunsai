@@ -7,6 +7,11 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  # `rust-version` turns on the MSRV-aware resolver, which would cap every job
+  # at 1.88-era dependency releases: the stable jobs would stop testing the
+  # graph a consumer resolves, and `msrv` could never fail over a dependency
+  # that raises its own floor. Resolve latest, then hold 1.88 with the compiler.
+  CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS: allow
 
 jobs:
   check:
@@ -19,9 +24,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --check
       - run: cargo clippy --all-targets --all-features -- -D warnings
-      # `--all-features` above turns on `slider-naive`, which wins the priority
-      # order in src/sliders.rs — so that run lints the oracle backend, not the
-      # one that ships. This lints what ships.
+      # Keep both. Every backend's source is linted either way, but
+      # `--all-features` is the only run that compiles `naive` and `internals`
+      # at all, and it makes `slider-naive` the live backend — so this second
+      # run is the only one that lints the cfg configuration that ships.
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
       # Compile the criterion benches; never run/measure them in CI.
@@ -32,11 +38,14 @@ jobs:
       # claim. Whether each multiplier *works* is asserted at compile time.
       - run: cargo run --example gen_magics -- --check
       # Doc comments are the one thing a comments-only change can break, and
-      # rustdoc is the only tool that notices. `--all-features` so the
-      # feature-gated modules are documented too.
+      # rustdoc is the only tool that notices. Two runs for the same reason as
+      # clippy: `--all-features` reaches the feature-gated modules, the default
+      # set is what docs.rs renders.
       - run: RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --document-private-items --all-features
-      # What crates.io would receive. Catches an `include` that drops a file
-      # the build needs, which is otherwise discovered at publish time.
+      - run: RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --document-private-items
+      # What crates.io would receive. Fails only on an `include` that drops a
+      # source the default-feature *lib* build needs; a dropped test, example
+      # or bench target is a warning cargo exits 0 on.
       - run: cargo publish --dry-run
 
   # Deep perft (initial position depth 5/6) is #[ignore]d in the normal run.
@@ -49,11 +58,13 @@ jobs:
       - run: cargo test --release -- --ignored
 
   # `rust-version` is a promise to consumers; nothing else checks it. The lib
-  # alone, because dev-dependencies do not constrain what a consumer needs.
+  # alone, because dev-dependencies do not constrain what a consumer needs —
+  # but every feature, because those are exactly what a consumer can turn on,
+  # and `slider-naive` / `bench-internals` gate lib modules nothing else builds.
   msrv:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.88.0
       - uses: Swatinem/rust-cache@v2
-      - run: cargo check --lib
+      - run: cargo check --lib --all-features

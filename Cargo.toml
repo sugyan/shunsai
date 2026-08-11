@@ -3,7 +3,7 @@ name = "shunsai"
 version = "0.1.0"
 edition = "2024"
 # Let-chains, not the edition, set this floor: edition 2024 alone would build
-# on 1.85. CI holds it.
+# on 1.85.
 rust-version = "1.88"
 authors = ["sugyan"]
 description = "Fast shogi legal move generator — SHogi's Ultra-fast Next-gen Successor, for AI"
@@ -16,28 +16,23 @@ categories = ["game-development", "algorithms"]
 # DECISIONS, BENCHMARKS), the fixtures and the committed measurement history
 # are for people working in the repository, and are the bulk of the tree.
 include = [
-    "src/**/*.rs",
+    "src",
     "README.md",
     "CHANGELOG.md",
     "LICENSE-MIT",
     "LICENSE-APACHE",
 ]
 
-[package.metadata.docs.rs]
-# Default features, deliberately: `--all-features` turns on `slider-naive`,
-# which wins the priority order in src/sliders.rs, so docs.rs would document a
-# build that calls the oracle backend rather than the one that ships.
-all-features = false
-
 [features]
 # Exposes crate internals to `benches/` only (see `src/internals.rs`).
 # Not public API: no stability guarantees, never enable as a dependency.
 bench-internals = []
 # M4 slider-attack backend selection (see src/sliders/). The default is
-# `magic`, which won the bake-off; these flags override it. Every backend is
-# always compiled so the tests can hold it against the naive oracle, so a
-# flag only changes which one the crate actually calls. Both overrides exist
-# for A/B measurement and debugging, not for real use.
+# `magic`, which won the bake-off; these flags override it. `magic` and
+# `qugiy` compile either way, so a flag mostly changes which one the crate
+# calls; `slider-naive` additionally brings in the oracle the tests compare
+# against. Both overrides exist for A/B measurement and debugging, not for
+# real use.
 slider-naive = []
 slider-qugiy = []
 

@@ -1,6 +1,7 @@
 //! Magic multipliers for the magic slider backend (the M4 default).
 //!
-//! GENERATED FILE - do not edit by hand. Regenerate with:
+//! GENERATED FILE - do not edit by hand. Regenerate from the
+//! repository with:
 //!
 //! ```sh
 //! cargo run --release --example gen_magics

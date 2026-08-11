@@ -2,9 +2,9 @@
 //!
 //! Every backend implements the same three functions (`lance_attacks`,
 //! `bishop_attacks`, `rook_attacks`); `tables.rs` re-exports whichever one
-//! the feature flags select. All backends are always *compiled*, so the
-//! tests can hold each of them against [`self::naive`], the obviously-correct
-//! ray-walking reference.
+//! the feature flags select. `magic` and `qugiy` are always *compiled*, and
+//! `naive` whenever something can reach it, so the tests can hold each of
+//! them against `naive`, the obviously-correct ray-walking reference.
 //!
 //! ## Layout facts the fast backends exploit
 //!

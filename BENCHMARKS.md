@@ -54,11 +54,14 @@ feature, the `internals` group is compiled out and the rest runs.
 > the slider backend is chosen by a priority order in `src/sliders.rs`, and
 > `slider-naive` wins it. `--all-features` therefore builds every `perft/*`
 > and `movegen/*` id against the **naive oracle backend** — around 5× slower on
-> bishops and 8× on rooks — and reports it without complaint. CI's
-> `cargo bench --no-run --all-features` step is fine because it only
-> type-checks, but a measurement run must name the features it wants
-> (`--features bench-internals`, plus `slider-qugiy` or `slider-naive`
-> deliberately when comparing backends).
+> bishops and 8× on rooks — and reports it without complaint. A measurement run
+> must name the features it wants (`--features bench-internals`, plus
+> `slider-qugiy` or `slider-naive` deliberately when comparing backends).
+>
+> **The trap is not measurement-specific.** Any tool handed `--all-features`
+> inspects the oracle as the live backend — which is why CI runs clippy and
+> rustdoc twice, once each way. `cargo bench --no-run --all-features` is the
+> one `--all-features` step left alone, because it only type-checks.
 
 Useful variants:
 
