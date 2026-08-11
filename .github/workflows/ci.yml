@@ -23,25 +23,29 @@ jobs:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --check
-      - run: cargo clippy --all-targets --all-features -- -D warnings
-      # Keep both. Every backend's source is linted either way, but
-      # `--all-features` is the only run that compiles `naive` and `internals`
-      # at all, and it makes `slider-naive` the live backend — so this second
-      # run is the only one that lints the cfg configuration that ships.
+      # `bench-internals`, never `--all-features`: the two backend flags select
+      # the same thing, so enabling both is a compile error and
+      # `--all-features` is not a configuration this crate has. This run
+      # compiles every backend with `magic`, the one that ships, live.
+      - run: cargo clippy --all-targets --features bench-internals -- -D warnings
+      # And again as a consumer gets it, with the optional modules absent.
       - run: cargo clippy --all-targets -- -D warnings
+      # Neither run above selects an override backend, and each arm is a single
+      # `use ... as active` that would otherwise compile nowhere.
+      - run: cargo check --lib --features slider-naive
+      - run: cargo check --lib --features slider-qugiy
       - run: cargo test
       # Compile the criterion benches; never run/measure them in CI.
-      - run: cargo bench --no-run --all-features
+      - run: cargo bench --no-run --features bench-internals
       # The magic multipliers are the one generated file in the tree. Re-run
       # the search (~0.4 s) and fail if it disagrees, so "these constants are
       # our own generator's output" stays a checked property rather than a
       # claim. Whether each multiplier *works* is asserted at compile time.
       - run: cargo run --example gen_magics -- --check
       # Doc comments are the one thing a comments-only change can break, and
-      # rustdoc is the only tool that notices. Two runs for the same reason as
-      # clippy: `--all-features` reaches the feature-gated modules, the default
-      # set is what docs.rs renders.
-      - run: RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --document-private-items --all-features
+      # rustdoc is the only tool that notices. Twice, as with clippy: once
+      # reaching the feature-gated modules, once as docs.rs renders it.
+      - run: RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --document-private-items --features bench-internals
       - run: RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --document-private-items
       # What crates.io would receive. Fails only on an `include` that drops a
       # source the default-feature *lib* build needs; a dropped test, example
@@ -59,12 +63,12 @@ jobs:
 
   # `rust-version` is a promise to consumers; nothing else checks it. The lib
   # alone, because dev-dependencies do not constrain what a consumer needs —
-  # but every feature, because those are exactly what a consumer can turn on,
-  # and `slider-naive` / `bench-internals` gate lib modules nothing else builds.
+  # but with `bench-internals`, which is what pulls in the feature-gated
+  # modules (`naive`, `internals`) that a default build never compiles at all.
   msrv:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.88.0
       - uses: Swatinem/rust-cache@v2
-      - run: cargo check --lib --all-features
+      - run: cargo check --lib --features bench-internals

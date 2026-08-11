@@ -28,11 +28,10 @@ include = [
 # Not public API: no stability guarantees, never enable as a dependency.
 bench-internals = []
 # M4 slider-attack backend selection (see src/sliders/). The default is
-# `magic`, which won the bake-off; these flags override it. `magic` and
-# `qugiy` compile either way, so a flag mostly changes which one the crate
-# calls; `slider-naive` additionally brings in the oracle the tests compare
-# against. Both overrides exist for A/B measurement and debugging, not for
-# real use.
+# `magic`, which won the bake-off; each flag replaces it with a different
+# backend, so the two are mutually exclusive — enabling both is a build error
+# rather than a silent choice, and `--all-features` therefore does not build.
+# Both exist for A/B measurement and debugging, not for real use.
 slider-naive = []
 slider-qugiy = []
 

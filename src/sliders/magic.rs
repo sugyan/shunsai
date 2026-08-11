@@ -25,8 +25,8 @@
 //! The file direction is not done here — it is nine contiguous bits, so
 //! [`super::file_attacks`] indexes it directly.
 
-// A backend that the feature flags did not select is still compiled, so
-// that the oracle tests and the A/B benchmarks can reach it.
+// Compiled unconditionally as the default backend, so under `slider-naive` or
+// `slider-qugiy` nothing calls it.
 #![allow(dead_code)]
 
 use shogi_core::Square;
