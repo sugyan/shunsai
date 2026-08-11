@@ -80,3 +80,28 @@ contradicting the file it was copied from. Two rules, both cheap:
 
 Before adding to any of the three documents, ask which one owns the fact
 (the table above), and whether it is already stated somewhere else. It usually is.
+
+## Commit messages
+
+Releases are cut by [release-plz](https://release-plz.dev), which reads the log to
+build `CHANGELOG.md`. It expects **Conventional Commits**, so a subject starts with a
+type — but the type is a *prefix on this project's existing style*, not a replacement
+for it. Keep writing the subject that says what changed, and what it bought:
+
+```
+perf: filter king_danger's sliders by where they could bear on the king (-16% on the initial position)
+feat!: return an Undo from do_move, so Position owns nothing on the heap
+docs: split the design from the decision log
+```
+
+- Types in use here: `perf` (an adopted optimization), `feat` / `fix`, `docs` (including
+  the three documents and `examples/`), `test`, `refactor`, `chore` (CI, manifest, tooling).
+  Append `!` when the change breaks the public API.
+- **A measured figure belongs in a commit subject.** The ban in the table above is on
+  *code comments*, which nothing re-checks; git holds a subject against the tree it
+  described, so it stays true.
+- **The prefix does not decide the version.** release-plz runs `cargo-semver-checks`,
+  which reads the compiled API rather than the message and overrides a bump the log
+  disagrees with. So a mistyped prefix costs changelog quality, not a wrong release —
+  and correspondingly, `!` is documentation rather than the thing that protects
+  `rinsai`. Do not rely on it as the guard.
