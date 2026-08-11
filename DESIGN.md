@@ -106,7 +106,6 @@ Correctness oracle (not a speed target): [`shogi_legality_lite`](https://github.
 - **M6 (demoted 2026-07-29)**: switch `tsumeshogi-solver` to depend on `shunsai`; validate the migration. Still worth doing as a real-world check that the API survives contact with a consumer, but it is no longer what the project is for — see §1.
 - **M7 — the actual destination**: a **search engine** on top of shunsai, in its own crate, and from there a strong AI. Deliberately not scoped in this document (§2 keeps this crate movegen-only), but it is what M4 and M5 are *for*. Named **`rinsai`**, one new repository, depending on *released* versions of this crate. Its staged plan (E0–E6, NNUE + αβ first) and the API additions each phase needs are in [DECISIONS.md](./DECISIONS.md) (2026-07-31, 2026-08-04).
 - **Before E0**: publish v0.1.0 on crates.io. Not optional sequencing — `rinsai` depends on released versions rather than a git pin, so the release is what E0 builds against. The release is also the **last point at which an API break is free**, so it gates more than packaging:
-  - ⏳ decide the `states: Vec<State>` move out of `Position` ([DECISIONS.md](./DECISIONS.md) Open questions) — after v0.1.0 it is a semver break against `rinsai`
   - run the **provenance scan** (§7)
   - decide what the published tarball contains: `Cargo.toml` has no `include`, so it currently ships every document and `benches/history/*.json`
   - `keywords = ["shogi","move-generation","bitboard","game","usi"]`, `categories = ["game-development","algorithms"]` (already in `Cargo.toml`)

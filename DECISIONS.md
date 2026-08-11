@@ -30,9 +30,7 @@ has sized the rest, so this order is a judgement, not a measurement.
 7. **`Position::remove_from_hand` is the one mutator not inlined**, while `put_piece`, `remove_piece` and `add_to_hand` all are.
 8. **`info.pinned.contains(from)`** costs 10 instructions and a branch per non-king origin, unswitched.
 9. **`do_move`/`undo_move` has never been optimized.** Flat in every recorded run since the M2 baseline — ~10 % of perft, and, unlike anything else on this list, called at every node of a search.
-10. **Copy-make `Position`** — unmeasured, bounded by do-undo's ~10 %, and it must beat `-cb` rather than `-cb-buf`. haitaka runs this branch: its `Board` is a pure value, so it recurses *inside* its listener, where `Position` owns `states: Vec<State>` and cloning allocates. Adopting it is a `Position` redesign, not a driver tweak.
-
-> ⏳ **One item has a deadline rather than a size.** Moving `states: Vec<State>` out of `Position`, so `do_move` returns an `Undo`, makes `Position` a pure value whose `Clone` does not allocate and collapses `with_drop` into `*self` — which is what would put item 10 within reach. It is an **API break, so it is free only before v0.1.0 ships**.
+10. **Copy-make `Position`** — unmeasured, bounded by do-undo's ~10 %, and it must beat `-cb` rather than `-cb-buf`. haitaka runs this branch: its `Board` is a pure value, so it recurses *inside* its listener. Since 2026-08-11 `Position` is a plain value too, so this is a **driver change rather than a redesign**, and nothing is left blocking a measurement.
 
 **Closed:** the hybrid per-destination king test (2026-08-07 — the danger pass it would replace has lost its slider loop on most nodes, so the crossover moved below one destination).
 

@@ -190,9 +190,9 @@ fn search(
     let mut best = -MATE;
     for mv in &moves {
         let mv = *mv;
-        position.do_move(mv);
+        let undo = position.do_move(mv);
         let score = -search(position, depth - 1, ply + 1, -beta, -alpha, table, nodes);
-        position.undo_move(mv);
+        position.undo_move(mv, undo);
         if score > best {
             best = score;
         }
@@ -220,9 +220,9 @@ fn search_root(
     let mut best_move = None;
     for mv in &ordered_moves(position) {
         let mv = *mv;
-        position.do_move(mv);
+        let undo = position.do_move(mv);
         let score = -search(position, depth - 1, 1, -MATE, -alpha, table, nodes);
-        position.undo_move(mv);
+        position.undo_move(mv, undo);
         if best_move.is_none() || score > alpha {
             alpha = score;
             best_move = Some(mv);
