@@ -19,10 +19,6 @@
 //! The file direction is not done here — it is nine contiguous bits, so
 //! [`super::file_attacks`] indexes it directly.
 
-// A backend that the feature flags did not select is still compiled, so
-// that the oracle tests and the A/B benchmarks can reach it.
-#![allow(dead_code)]
-
 use shogi_core::Square;
 
 use super::{DIAGONAL_DOWN_LINE, DIAGONAL_UP_LINE, LineKind, RANK_LINE, walk_line};
