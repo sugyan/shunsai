@@ -3,10 +3,6 @@
 //! Slow, but it is the oracle every other backend is tested against, so it
 //! is kept compiled (and selectable via the `slider-naive` feature) forever.
 
-// A backend that the feature flags did not select is still compiled, so
-// that the oracle tests and the A/B benchmarks can reach it.
-#![allow(dead_code)]
-
 use shogi_core::Square;
 
 use crate::bitboard::Bitboard;

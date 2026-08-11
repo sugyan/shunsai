@@ -50,15 +50,14 @@ cargo bench --features bench-internals
 The whole suite is one bench target (`benches/suite/`); without the
 feature, the `internals` group is compiled out and the rest runs.
 
-> ⚠️ **Never record with `--all-features`.** Cargo features are additive, so
-> the slider backend is chosen by a priority order in `src/sliders.rs`, and
-> `slider-naive` wins it. `--all-features` therefore builds every `perft/*`
-> and `movegen/*` id against the **naive oracle backend** — around 5× slower on
-> bishops and 8× on rooks — and reports it without complaint. CI's
-> `cargo bench --no-run --all-features` step is fine because it only
-> type-checks, but a measurement run must name the features it wants
-> (`--features bench-internals`, plus `slider-qugiy` or `slider-naive`
-> deliberately when comparing backends).
+> ⚠️ **Name the backend a run wants**: `--features bench-internals`, plus
+> `slider-qugiy` or `slider-naive` deliberately when comparing backends.
+> `--all-features` is not the shortcut it looks like — the two backend flags
+> select the same thing, so enabling both is a `compile_error!` and the crate
+> does not build that way at all. It used to resolve by a priority order that
+> `slider-naive` won, which built every `perft/*` and `movegen/*` id against
+> the **naive oracle backend** — several times slower on both bishop and rook
+> — and reported it without complaint.
 
 Useful variants:
 
