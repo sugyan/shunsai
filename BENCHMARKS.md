@@ -50,15 +50,14 @@ cargo bench --features bench-internals
 The whole suite is one bench target (`benches/suite/`); without the
 feature, the `internals` group is compiled out and the rest runs.
 
-> ⚠️ **Never record with `--all-features`.** Cargo features are additive, so
-> the slider backend is chosen by a priority order in `src/sliders.rs`, and
-> `slider-naive` wins it. `--all-features` therefore builds every `perft/*`
-> and `movegen/*` id against the **naive oracle backend** — around 5× slower on
-> bishops and 8× on rooks — and reports it without complaint. CI's
-> `cargo bench --no-run --all-features` step is fine because it only
-> type-checks, but a measurement run must name the features it wants
-> (`--features bench-internals`, plus `slider-qugiy` or `slider-naive`
-> deliberately when comparing backends).
+> ⚠️ **Name the backend a run wants**: `--features bench-internals`, plus
+> `slider-qugiy` or `slider-naive` deliberately when comparing backends.
+> `--all-features` is not the shortcut it looks like — the two backend flags
+> select the same thing, so enabling both is a `compile_error!` and the crate
+> does not build that way at all. It used to resolve by a priority order that
+> `slider-naive` won, which built every `perft/*` and `movegen/*` id against
+> the **naive oracle backend** — several times slower on both bishop and rook
+> — and reported it without complaint.
 
 Useful variants:
 
@@ -101,7 +100,7 @@ rustc, and criterion versions. The full suite takes roughly 3–5 minutes.
 | `movegen/sampled-v1{,-check}-cb` | the same two sweeps through the callback API | Elements = positions |
 | `movegen/sampled-v1{,-check}-buf` | the same two sweeps, materialized into a reused buffer | Elements = positions |
 | `movegen/sampled-v1{,-check}-wi` | the same two sweeps, through `MoveSet::write_into` | Elements = positions |
-| `do_undo/games-v1` | `do_move` all + `undo_move` all over 4 real games | Elements = do+undo pairs |
+| `do_undo/games-v1` | `do_move` all + `undo_move` all over 4 real games, the driver holding the `Undo` stack it allocated outside the measured loop | Elements = do+undo pairs |
 | `internals/bishop-attacks` | `bishop_attacks(sq, occ)`, 81 squares × 3 positions | Elements = calls |
 | `internals/rook-attacks` | `rook_attacks(sq, occ)`, same sweep | Elements = calls |
 | `internals/lance-attacks` | `lance_attacks(color, sq, occ)`, both colors | Elements = calls |
@@ -242,6 +241,10 @@ All three, not any one:
    property of the id.
 2. **The control ids hold.** Quote the ids the change provably cannot reach
    (`internals/*`, `do_undo/*` for a movegen change) and state their movement.
+   **Pick the control per change, not from that list.** `internals/attackers-to`
+   takes a `&Position`, so anything that moves `Position`'s layout reaches it and
+   it is signal rather than control; the slider sweeps take a square and an
+   occupancy, and are the controls that survive a layout change.
    **If the control drifts as much as the signal, the run is not recordable** —
    or, if it is recorded anyway, the entry must say so and give the ratio.
 3. **Nothing is quoted across a base it was not measured against.** Gains

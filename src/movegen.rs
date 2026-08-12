@@ -936,9 +936,9 @@ mod tests {
                 return;
             }
             for mv in position.legal_moves() {
-                position.do_move(mv);
+                let undo = position.do_move(mv);
                 walk(position, depth - 1, nodes, dropped, dragon_only, horse_only);
-                position.undo_move(mv);
+                position.undo_move(mv, undo);
             }
         }
         let mut nodes = 0;
@@ -1083,9 +1083,9 @@ mod tests {
                 return;
             }
             for mv in position.legal_moves() {
-                position.do_move(mv);
+                let undo = position.do_move(mv);
                 walk(position, depth - 1, nodes, doubles, double_pins);
-                position.undo_move(mv);
+                position.undo_move(mv, undo);
             }
         }
         let mut nodes = 0;

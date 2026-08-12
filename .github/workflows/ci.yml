@@ -7,6 +7,11 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  # `rust-version` turns on the MSRV-aware resolver, which would cap every job
+  # at 1.88-era dependency releases: the stable jobs would stop testing the
+  # graph a consumer resolves, and `msrv` could never fail over a dependency
+  # that raises its own floor. Resolve latest, then hold 1.88 with the compiler.
+  CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS: allow
 
 jobs:
   check:
@@ -18,19 +23,34 @@ jobs:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --check
-      - run: cargo clippy --all-targets --all-features -- -D warnings
+      # `bench-internals`, never `--all-features`: the two backend flags select
+      # the same thing, so enabling both is a compile error and
+      # `--all-features` is not a configuration this crate has. This run
+      # compiles every backend with `magic`, the one that ships, live.
+      - run: cargo clippy --all-targets --features bench-internals -- -D warnings
+      # And again as a consumer gets it, with the optional modules absent.
+      - run: cargo clippy --all-targets -- -D warnings
+      # Neither run above selects an override backend, and each arm is a single
+      # `use ... as active` that would otherwise compile nowhere.
+      - run: cargo check --lib --features slider-naive
+      - run: cargo check --lib --features slider-qugiy
       - run: cargo test
       # Compile the criterion benches; never run/measure them in CI.
-      - run: cargo bench --no-run --all-features
+      - run: cargo bench --no-run --features bench-internals
       # The magic multipliers are the one generated file in the tree. Re-run
       # the search (~0.4 s) and fail if it disagrees, so "these constants are
       # our own generator's output" stays a checked property rather than a
       # claim. Whether each multiplier *works* is asserted at compile time.
       - run: cargo run --example gen_magics -- --check
       # Doc comments are the one thing a comments-only change can break, and
-      # rustdoc is the only tool that notices. `--all-features` so the
-      # feature-gated modules are documented too.
-      - run: RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --document-private-items --all-features
+      # rustdoc is the only tool that notices. Twice, as with clippy: once
+      # reaching the feature-gated modules, once as docs.rs renders it.
+      - run: RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --document-private-items --features bench-internals
+      - run: RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --document-private-items
+      # What crates.io would receive. Fails only on an `include` that drops a
+      # source the default-feature *lib* build needs; a dropped test, example
+      # or bench target is a warning cargo exits 0 on.
+      - run: cargo publish --dry-run
 
   # Deep perft (initial position depth 5/6) is #[ignore]d in the normal run.
   perft-deep:
@@ -40,3 +60,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --release -- --ignored
+
+  # `rust-version` is a promise to consumers; nothing else checks it. The lib
+  # alone, because dev-dependencies do not constrain what a consumer needs —
+  # but with `bench-internals`, which is what pulls in the feature-gated
+  # modules (`naive`, `internals`) that a default build never compiles at all.
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88.0
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --lib --features bench-internals
