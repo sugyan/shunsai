@@ -41,9 +41,9 @@ fn perft(position: &mut Position, depth: u32) -> u64 {
     });
     let mut nodes = 0;
     for mv in moves {
-        position.do_move(mv);
+        let undo = position.do_move(mv);
         nodes += perft(position, depth - 1);
-        position.undo_move(mv);
+        position.undo_move(mv, undo);
     }
     nodes
 }
@@ -86,9 +86,9 @@ fn perft_materialize(position: &mut Position, depth: u32, buf: &mut Vec<Move>) -
     let mut i = base;
     while i < buf.len() {
         let mv = buf[i];
-        position.do_move(mv);
+        let undo = position.do_move(mv);
         nodes += perft_materialize(position, depth - 1, buf);
-        position.undo_move(mv);
+        position.undo_move(mv, undo);
         i += 1;
     }
     buf.truncate(base);
