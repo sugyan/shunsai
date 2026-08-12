@@ -2,14 +2,13 @@
 
 This file defines project rules that every future implementation session (Claude Code) **must follow**.
 
-Background and detail live in four documents, each with one job:
+Background and detail live in three documents, each with one job:
 
 | document | holds | go there when |
 |---|---|---|
 | [DESIGN.md](./DESIGN.md) | design, scope, milestones, licensing policy | you need to know what the crate is and is not |
 | [DECISIONS.md](./DECISIONS.md) | what was decided and **rejected**, what is still open | before proposing an optimization — check it was not already tried |
 | [BENCHMARKS.md](./BENCHMARKS.md) | measurement method, fixtures, every recorded number | before quoting or taking a measurement |
-| [RELEASING.md](./RELEASING.md) | the release procedure, and the crates.io settings this repository cannot show you | before cutting a release, or when publishing breaks |
 
 ## Project overview
 
@@ -89,10 +88,9 @@ Before adding to any of the three documents, ask which one owns the fact
 ## Commit messages
 
 Releases are cut by [release-plz](https://release-plz.dev), which reads the log to
-build `CHANGELOG.md` (the procedure is [RELEASING.md](./RELEASING.md)). It expects
-**Conventional Commits**, so a subject starts with a type — but the type is a *prefix on
-this project's existing style*, not a replacement for it. Keep writing the subject that
-says what changed, and what it bought:
+build `CHANGELOG.md`. It expects **Conventional Commits**, so a subject starts with a
+type — but the type is a *prefix on this project's existing style*, not a replacement
+for it. Keep writing the subject that says what changed, and what it bought:
 
 ```
 perf: filter king_danger's sliders by where they could bear on the king (-16% on the initial position)

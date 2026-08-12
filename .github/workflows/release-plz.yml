@@ -25,8 +25,8 @@ jobs:
   # one, so there is no registry secret to hold. Two things it pins, both silent
   # if broken: **this file's name is part of the trusted publisher configuration
   # on crates.io**, so renaming it stops publishing until that is updated too, and
-  # the configuration's environment field must stay empty to match this job.
-  # See RELEASING.md.
+  # the configuration's environment field must stay empty to match this job
+  # declaring none.
   release-plz-release:
     runs-on: ubuntu-latest
     permissions:
