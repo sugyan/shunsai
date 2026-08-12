@@ -1,0 +1,65 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # Same reason as ci.yml: `rust-version` turns on the MSRV-aware resolver, which
+  # would resolve this crate's dependencies as of 1.88 rather than as a consumer
+  # gets them. cargo-semver-checks and the publish build should both see the
+  # graph the stable jobs test.
+  CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS: allow
+
+jobs:
+  # Publishes whatever version is in Cargo.toml once it is not on crates.io, then
+  # tags it and cuts a GitHub release. The default GITHUB_TOKEN is enough here:
+  # this job triggers no further workflow.
+  release-plz-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: release-plz/action@v0.5.131
+        with:
+          command: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  # Opens (and keeps updating) the release PR: the version bump that
+  # cargo-semver-checks agrees with, and the CHANGELOG entry built from the log.
+  #
+  # RELEASE_PLZ_TOKEN, *not* the default GITHUB_TOKEN. A pull request opened with
+  # GITHUB_TOKEN does not trigger workflow runs, and `main`'s ruleset requires
+  # `check` and `msrv` with no bypass actors — so a release PR opened that way
+  # would sit with no CI and be unmergeable by anyone, including the owner.
+  release-plz-pr:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    concurrency:
+      group: release-plz-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: release-plz/action@v0.5.131
+        with:
+          command: release-pr
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

@@ -1,0 +1,15 @@
+[changelog]
+# The default parsers know `feat` and `fix` and sweep everything else into
+# "other" — which for this crate would put `perf` there, the type the project
+# exists to produce. Every type CLAUDE.md declares gets a group instead, and
+# nothing is skipped: `chore!` is how the MSRV moves, which a consumer must see.
+commit_parsers = [
+    { message = "^feat", group = "added" },
+    { message = "^fix", group = "fixed" },
+    { message = "^perf", group = "performance" },
+    { message = "^docs", group = "documentation" },
+    { message = "^refactor", group = "internal" },
+    { message = "^test", group = "internal" },
+    { message = "^chore", group = "internal" },
+    { message = "^.*", group = "other" },
+]
