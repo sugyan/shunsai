@@ -2,8 +2,9 @@
 //!
 //! Every backend implements the same three functions (`lance_attacks`,
 //! `bishop_attacks`, `rook_attacks`); `tables.rs` re-exports whichever one
-//! the feature flags select. All backends are always *compiled*, so the
-//! tests can hold each of them against [`self::naive`], the obviously-correct
+//! the feature flags select — at most one of them, or the build fails. The
+//! override backends are compiled only when something can reach them, which
+//! the tests always do, holding each against `naive`, the obviously-correct
 //! ray-walking reference.
 //!
 //! ## Layout facts the fast backends exploit
@@ -85,20 +86,34 @@ pub(crate) const fn relevant_mask(index: usize, line: LineKind) -> u128 {
     bits
 }
 
+// The two override flags select the same thing, so they are exclusive. Cargo
+// features are additive and cannot express that, so refuse the combination
+// rather than resolve it by a priority order — which is how a tool told
+// `--all-features` ends up silently measuring, linting or documenting the
+// oracle. The consequence is deliberate: this crate does not build under
+// `--all-features`.
+#[cfg(all(feature = "slider-naive", feature = "slider-qugiy"))]
+compile_error!("slider-naive and slider-qugiy select the same thing; enable at most one");
+
+// An override backend is compiled when something can actually reach it: the
+// tests always, the bench suite that measures all three in one run, and the
+// flag that selects it as the live backend. `magic` stays unconditional
+// because it is the unflagged default and because the geometry helpers above
+// are shared with it — gating it out would leave them dead in the two
+// override configurations, buying a warning suppression rather than removing
+// one.
 pub(crate) mod magic;
 mod magics;
-// The oracle is compiled when something can actually reach it: the tests
-// always, the feature that selects it as the live backend, and the bench
-// suite that measures it as the A/B floor.
-#[cfg(any(test, feature = "slider-naive", feature = "bench-internals"))]
+#[cfg(any(test, feature = "bench-internals", feature = "slider-naive"))]
 pub(crate) mod naive;
+#[cfg(any(test, feature = "bench-internals", feature = "slider-qugiy"))]
 pub(crate) mod qugiy;
 #[cfg(test)]
 mod tests;
 
-// Exactly one backend is live. Cargo features are additive, so the
-// selection is a priority order rather than a set of exclusive options,
-// and `magic` — the one the M4 bake-off adopted — is the unflagged default.
+// Exactly one backend is live; `magic` is the one the M4 bake-off adopted.
+// The `not(slider-naive)` on the last arm keeps `active` singly-defined when
+// both flags are set, so `compile_error!` above is the only diagnostic.
 #[cfg(not(any(feature = "slider-naive", feature = "slider-qugiy")))]
 pub(crate) use magic as active;
 #[cfg(feature = "slider-naive")]

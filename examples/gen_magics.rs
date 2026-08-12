@@ -200,7 +200,8 @@ fn generate() -> String {
     let mut out = String::from(
         "//! Magic multipliers for the magic slider backend (the M4 default).\n\
          //!\n\
-         //! GENERATED FILE - do not edit by hand. Regenerate with:\n\
+         //! GENERATED FILE - do not edit by hand. Regenerate from the\n\
+         //! repository with:\n\
          //!\n\
          //! ```sh\n\
          //! cargo run --release --example gen_magics\n\
