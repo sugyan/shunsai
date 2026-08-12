@@ -8,8 +8,18 @@ Recorded so decisions are revisited deliberately instead of re-litigated.
 - **Figures appear here only when a future decision depends on the number itself.**
   Everything else is in `benches/history/*.json`, keyed by the append-only bench ids —
   that file is the record, this one is the reasoning.
-- New entries go at the end. Keep them to the decision, what was rejected, the guards,
-  and what is still open; if an entry's conclusion is later generalized or superseded,
+- **If the commit says it, link the commit instead of retelling it.** An adopted change
+  already has a primary source: the commit that made it, written against the tree it
+  describes, with the figures that were true of it. Retelling it here produces a lossier
+  copy that nothing re-checks — the 2026-07-30 entry said "roughly a quarter" where its
+  commit says 23.7 %. So an adopted change gets a heading, a link, and then only the parts
+  the commit does not hold.
+- **What has no primary source is written out properly, and that is most of this file's
+  value**: candidates that were *rejected* (there is no commit to find, which is why
+  "check it was not already tried" has to land here), coverage holes and open conditions,
+  corrections that span two commits, decisions taken with no code to point at, and
+  findings that outlived the change that produced them.
+- New entries go at the end. If an entry's conclusion is later generalized or superseded,
   compress it rather than appending a correction.
 
 ---
@@ -23,16 +33,14 @@ has sized the rest, so this order is a judgement, not a measurement.
 
 1. **`check_info`'s step-checker half is dead work in 82 % of sampled positions** (33 of 40; 28 of the 31 not in check). Gateable on `their & (king_attacks | knight_attacks)`. This is the one item the 2026-08-06 decomposition ranked, and it ranked it first.
 2. **`MoveSet::write_into` is not being inlined.** A standalone symbol at 14–16 call sites, so every materializing listener spills the 48-byte `MoveSet` to the stack and pays a prologue per set. This contradicts the 2026-07-28 finding that the 48 bytes "never materialise" — that was verified on the *counting* listener and holds only there.
-3. **`zobrist.rs` is still `LazyLock<Box<Keys>>`.** The 2026-07-27 const-ification covered `tables.rs` alone. Every `board_key` is an acquire load plus a `Box` deref, and the acquire is a barrier that stops LLVM dead-store-eliminating the three Zobrist read-modify-writes in `undo_move` that `self.key = state.key` immediately overwrites. `splitmix64` is `const fn`-able.
+3. **`zobrist.rs` is still `LazyLock<Box<Keys>>`.** The 2026-07-27 const-ification covered `tables.rs` alone. Every `board_key` is an acquire load plus a `Box` deref, and the acquire is a barrier that stops LLVM dead-store-eliminating the three Zobrist read-modify-writes in `undo_move` that `self.key = undo.key` immediately overwrites. `splitmix64` is `const fn`-able.
 4. **The specialized pawn-drop-mate test** — a pawn checks from an *adjacent* square, so the only legal replies are a king move or a capture of the pawn; blocking and drops are impossible. Worth about a fifth of `maxmoves-d2` (it was four fifths before pin legality and the clone removal).
 5. **A `Position`-cached slider union.** `king_danger` makes five `piece_kind_bb` reads per node, grouped into two unions. Removing that construction entirely was bounded at **≤1 %** on 2026-08-07, and the grouping into two unions plus the two zone ANDs it cannot touch puts the real upside below that. The trade is the one the cached gold union lost on — it needs a much cheaper maintenance story before it is worth measuring.
 6. **Incremental maintenance of the danger bitboard across `do_move`** ([DESIGN.md](./DESIGN.md) §3's "incremental AttackInfo"). Now has a per-node rebuild to beat rather than the old per-destination test.
 7. **`Position::remove_from_hand` is the one mutator not inlined**, while `put_piece`, `remove_piece` and `add_to_hand` all are.
 8. **`info.pinned.contains(from)`** costs 10 instructions and a branch per non-king origin, unswitched.
 9. **`do_move`/`undo_move` has never been optimized.** Flat in every recorded run since the M2 baseline — ~10 % of perft, and, unlike anything else on this list, called at every node of a search.
-10. **Copy-make `Position`** — unmeasured, bounded by do-undo's ~10 %, and it must beat `-cb` rather than `-cb-buf`. haitaka runs this branch: its `Board` is a pure value, so it recurses *inside* its listener, where `Position` owns `states: Vec<State>` and cloning allocates. Adopting it is a `Position` redesign, not a driver tweak.
-
-> ⏳ **One item has a deadline rather than a size.** Moving `states: Vec<State>` out of `Position`, so `do_move` returns an `Undo`, makes `Position` a pure value whose `Clone` does not allocate and collapses `with_drop` into `*self` — which is what would put item 10 within reach. It is an **API break, so it is free only before v0.1.0 ships**.
+10. **Copy-make `Position`** — unmeasured, bounded by do-undo's ~10 %, and it must beat `-cb` rather than `-cb-buf`. haitaka runs this branch: its `Board` is a pure value, so it recurses *inside* its listener. Since 2026-08-11 `Position` is a plain value too, so this is a **driver change rather than a redesign**, and nothing is left blocking a measurement.
 
 **Closed:** the hybrid per-destination king test (2026-08-07 — the danger pass it would replace has lost its slider loop on most nodes, so the crossover moved below one destination).
 
@@ -97,11 +105,7 @@ Every id moved within noise: on an already-initialized lock the check is a perfe
 
 The builders index raw `array_index` arithmetic since `Square::shift`/`Square::all` are not `const fn`; the old `Square`-based builders are retained as test-only references that every const table is asserted equal to.
 
-### 2026-07-27 — slider attacks: magic bitboards adopted over Qugiy, decided by measurement
-
-The M2 baseline showed slider ray-walking was *the* bottleneck — most of an `attackers_to` call was stepping square by square through `Square::shift`, which `shogi_core` exports as `extern "C"` and so is not freely inlinable.
-
-Measured per call over the 81-square × 3-position sweep, magic won on both bishop and rook, mostly on the rook, and end-to-end perft agreed. Magic is the unflagged default; `slider-qugiy` / `slider-naive` remain as override flags.
+### 2026-07-27 — slider attacks: magic bitboards adopted over Qugiy, decided by measurement — [`efc399a`](https://github.com/sugyan/shunsai/commit/efc399a) (#4)
 
 **The losing numbers are kept deliberately** (`benches/history/2026-07-27-8de28d8.json`). Qugiy is **within ~10 % of magic while needing no attack tables at all**, against magic's ~486 KiB of `.rodata`. If cache pressure ever outweighs raw latency — a real search, unlike a perft microbenchmark — the decision is worth **re-running rather than re-deriving**.
 
@@ -130,9 +134,7 @@ Redirecting the generator's stdout into `magics.rs` cannot work: the shell trunc
 
 **Rejected: `build.rs`** — the search is deterministic, so every downstream build would repeat work whose answer never changes; and, decisive given that licensing is this project's top constraint, the constants would no longer be visible in the tree or in a diff, which is exactly how the "our own generator, not transcribed" claim is demonstrated.
 
-### 2026-07-27 — the callback API yields a `MoveSet` per origin, promotions as a separate bitboard (M3)
-
-`Position::generate_moves(|set| ...)` hands out one `MoveSet` per origin (or per dropped piece kind) and stops early; `legal_moves()` remains the allocating wrapper.
+### 2026-07-27 — the callback API yields a `MoveSet` per origin, promotions as a separate bitboard (M3) — [`86168d2`](https://github.com/sugyan/shunsai/commit/86168d2) (#5)
 
 The shape worth recording is `MoveSet::Normal { promotions, non_promotions }` rather than one destination bitboard plus a flag: **the two sets overlap exactly where promotion is optional**, so a square in `promotions` alone is a compulsory promotion and one in `non_promotions` alone cannot promote at all. That encodes shogi's forced-promotion rule as set membership, which is what let the per-destination rank tests become mask ANDs. `MoveSet::len()` is then two popcounts, making perft's leaf bulk counting free of any `Move` construction.
 
@@ -154,19 +156,7 @@ The size is real (two `u128` bitboards at align 16, plus tag/`piece`/`from` in t
 
 **`ControlFlow<B>` was tried and rejected on inference, not taste.** The overwhelmingly common call is a full walk in statement position whose result is discarded, leaving `B` unconstrained and failing with `E0282` (verified on 1.94); every counting caller would need a turbofish to use an API shape it does not want. A value-carrying `find_move` can be added later. The cost is that `ControlFlow` is `#[must_use]`, so full-walk callers write `let _ = ...` — noise the compiler enforces in exchange for making early exit impossible to ignore.
 
-### 2026-07-27 — legality is decided per position, not per move
-
-Generation used to test each candidate with `attackers_to` on an adjusted occupancy, gated by an over-approximation: any of our pieces standing on a king ray counted as possibly pinned whether or not an enemy slider stood behind it, and in check *every* move was tested.
-
-Each node now computes the checkers and the genuinely pinned pieces once, and those two bitboards make every non-king move legal by construction:
-
-- a piece that is not pinned cannot expose its own king, because a pin is exactly the situation where it could;
-- a pinned piece is masked to `line(king, from)`, which still lets it capture the pinner;
-- a single check masks every non-king move to capturing the checker or interposing; a double check leaves only king moves.
-
-Only the king still needs a test, since it is what the test is about, and it is lifted out of `occupied` so it cannot retreat along a checking ray. Snipers are found by asking which enemy sliders would reach the king on an *empty* board and counting blockers between; a dragon's or horse's one-step sidesteps can never pin, and lances are searched from the king with *our* colour — the same reverse lookup `attackers_to` uses.
-
-The largest single gain recorded to that point, on every id (`benches/history/2026-07-28-abf8345.json`). Cost: one 81×81 `LINE` table for the pin mask, alongside `BETWEEN`.
+### 2026-07-27 — legality is decided per position, not per move — [`dc3c36e`](https://github.com/sugyan/shunsai/commit/dc3c36e) (#6)
 
 ### 2026-07-27 — two generation candidates measured and *rejected*
 
@@ -186,36 +176,26 @@ The M3 entry had credited threading one reusable `Vec` through the perft recursi
 
 The reasoning for giving the buffer its own append-only ids, rather than folding it into `-cb`, is what caught the error and stands.
 
-### 2026-07-29 — the pawn-drop-mate simulation no longer clones; generation allocates nothing
-
-`is_pawn_drop_mate` simulated the drop with `position.clone()` + `do_move`, and `Position` owns `states: Vec<State>`, so cloning allocates. It was **the only allocating step anywhere in generation**. Two operations per simulated drop, not one: `Vec::clone` gives the copy *exact* capacity, so `do_move`'s own `states.push` reallocates immediately.
-
-`Position::with_drop` instead copies the position by value and starts from an empty `Vec`, applying the drop without recording undo state — the simulated position is discarded, so it never needs to be un-done. All three `-cb-buf` walks are now **0 allocations**. Worth a large gain on maxmoves-d2 and nothing elsewhere, correctly: the simulation is reached a handful of times in all of matsuri-d3 and **never** at startpos, which needs a pawn in hand and a legal drop square adjacent to the enemy king.
+### 2026-07-29 — the pawn-drop-mate simulation no longer clones; generation allocates nothing — [`4a17c50`](https://github.com/sugyan/shunsai/commit/4a17c50) (#8)
 
 - **Rejected: `do_move`/`undo_move` on `&mut Position`.** It would avoid the copy too, but only by making `generate_moves`, `legal_moves` and `has_legal_moves` take `&mut self` — and the callback contract is shaped *around* the listener's shared borrow. Generation demanding unique access would stop callers holding the position immutably while generating.
 - **This reversed the follow-up.** Before pin legality, the mate test was most of `maxmoves-d2` and the allocation a small part of it, which made the specialized mate test look like the obvious next change. Pin legality made the `has_legal_moves()` walk inside the test far cheaper without touching the clone, so the allocation became the *majority* of what was left. The specialized test is **demoted, not dropped** (Open question 4).
-- **Guards.** `position_after_drop_matches_do_move` holds `with_drop` to clone-and-`do_move` over every hand piece on every square it may legally occupy; `Position`'s `PartialEq` compares every field *except* the undo stack, so a field added to `Position` and missed in `with_drop` fails it. By sabotage, the tests that cover this function at all are the differential oracle, `rules::pawn_drop_mate_is_excluded`, and `perft::max_moves_position_deep` — **none of the default-depth perft values do**, and that deep value is `#[ignore]`d, so CI's `--ignored` step is the only perft guard on pawn-drop-mate exclusion.
+- **Guards.** `position_after_drop_matches_do_move` holds `with_drop` to clone-and-`do_move` over every hand piece on every square it may legally occupy; `Position`'s `PartialEq` compares every field, so a step `do_move`'s drop path gains and `with_drop`'s tail does not fails it. By sabotage, the tests that cover this function at all are the differential oracle, `rules::pawn_drop_mate_is_excluded`, and `perft::max_moves_position_deep` — **none of the default-depth perft values do**, and that deep value is `#[ignore]`d, so CI's `--ignored` step is the only perft guard on pawn-drop-mate exclusion.
 
 ### 2026-07-29 — the consumer is a search engine, which re-opens two closed decisions
 
 Every optimization so far was judged against *perft*, and perft is the measuring instrument, not the customer. The engine is a separate crate, so the non-goals stand unchanged — **what changes is the standard of evidence. "Free" now has to mean free under a search.** Neither decision below is reversed; what is withdrawn is the reason to stop looking.
 
-- **`MoveSet`'s 48 bytes are no longer settled** — that entry dismissed the size *because* nothing stores a `MoveSet`, and named the one caller that would change that: "move ordering in a search would, but search is a non-goal". That premise is gone.
+- **`MoveSet`'s 48 bytes are no longer settled** — that entry dismissed the size *because* nothing stores a `MoveSet`, and named the one caller that would change that: "move ordering in a search would, but search is a non-goal". That premise is gone. **Settled again 2026-08-11**: the fields are public and stay so, and the size follows from the design rather than from their visibility.
 - **magic-vs-qugiy should be re-run under a search.** The slider entry already flagged the condition; a search sharing cache with a transposition table is precisely the case a perft microbenchmark cannot create. Both backends stay compiled, so this is a measurement, not a rewrite.
 - **What a search needs that perft never exercises**, hence unmeasured and mostly unbuilt: repetition detection (千日手, including the perpetual-check distinction, which needs history rather than a position), a static exchange evaluation or capture-ordering hook, and **exposing** check / pin / attacked information rather than recomputing it per node. `king_danger` produces exactly the attacked-squares set a search wants, so the largest remaining perft hot spot and the first search-facing API need are the same piece of work.
-- **Make-unmake is already the search-friendly shape.** `do_move`/`undo_move` is ~10 % of perft runtime, so the copy-make alternative is bounded by that and costs an API break.
+- **Make-unmake is already the search-friendly shape.** `do_move`/`undo_move` is ~10 % of perft runtime, so the copy-make alternative is bounded by that. It also cost an API break at the time; 2026-08-11 spent that break for other reasons, so what remains is the bound.
 
-### 2026-07-30 — the king's destinations are decided by one danger bitboard
-
-Three changes, measured and adopted separately, **because the first on its own loses**. Together the largest gain of any single entry on the evasion and max-moves ids (`benches/history/2026-07-30-97e28b2.json`). The correctness argument — why every king destination collapses into one mask — is in `king_danger`'s doc comment, which is where it constrains anything.
-
-**Why this was the target.** Generation tested each king destination separately, rebuilding occupancy per move and calling the full `attackers_to` — up to eight times a node. Stubbing it out put it at roughly a quarter of startpos-d5 and more than half of maxmoves-d3. haitaka's remaining lead was 1.18× on startpos, so this one site was larger than the whole gap. (Stub shares *understate*: the stub also inflates the tree, so it measures the whole test including the inflation, not what a bitboard can recover.)
+### 2026-07-30 — the king's destinations are decided by one danger bitboard — [`05b59e4`](https://github.com/sugyan/shunsai/commit/05b59e4) (#10)
 
 - **On its own the bitboard is a regression on two positions of three, and that is the useful result.** One pass over ~20 enemy pieces is a **fixed** cost where the test it replaces was paid **per candidate square** — and the initial position's king has three, matsuri's two.
 - **The fix is to filter the loop, not to abandon the bitboard.** Only attacks landing on the king's eight neighbours can survive the mask, and a piece with bounded reach whose target is one step from the king provably cannot bear on a destination from outside a **two-file by three-rank box**. That turned both regressions into gains. *(The slider half of this filter was wrong until 2026-08-07 — see that entry.)*
 - **The cost is that `king_danger` returns a partial attack map**, valid only next to the king — and this is the function a search would take its full attacked-squares set from. Dropping the filter is one line but costs what the filter buys. **The condition: a search that wants the full attack map must re-measure this filter, not assume it.**
-
-**Checkers and pins are the same slider question at different blocker counts**, so one empty-board walk gives both: 0 blockers is a checker, 1 is a pin, 2+ is neither. This is the part that finally moved matsuri, because unlike the danger bitboard it does not depend on how many squares the king has. `attackers_to` stays for `in_check` and the internals bench.
 
 - **Guards, by sabotage.** Zeroing `danger` is caught by the differential oracle, all three default-depth perft values, and three `rules` tests. Shrinking the box is caught by `step_attacker_zone_covers_every_step_piece` and by `rules::distant_knight_still_covers_a_king_escape`, which places a knight at the exact corner. Two tests cover the capture argument **in both directions** — the king may not take a defended pawn, and it **must** be allowed to take an undefended one. The second is what a merely-conservative danger bitboard would break, and zeroing `danger` does not fail it.
 - ⚠️ **One sniper cannot tell accumulation from assignment, and the fixtures did not cover it.** Turning `checkers |= single(sniper)` into `=` passed **the entire suite, including the differential oracle and the `#[ignore]`d deep perft values**: a double check by *two sliders* is reachable from no fixture and from none of the three deep perft trees. Two fixtures now close it, and the test **asserts it reached each configuration**, so removing a fixture fails loudly instead of silently reducing coverage.
@@ -236,15 +216,7 @@ The engine's name, repository layout and full roadmap live in `rinsai`'s own des
 - **shunsai is published to crates.io, and `rinsai` depends on released versions rather than a git pin.** The plan had assumed a git dependency with a rev pin plus a local `[patch]` override, on the assumption that a release per API addition was a cost to avoid. It is not: shunsai is a library with third-party value and belongs on crates.io regardless. **A consequence that constrains this crate: an API addition E1 wants is a version of shunsai, so it carries semver.**
 - **v0.1.0 therefore moves from "Later" to a prerequisite of E0.** E0 still requires no API change, but it needs something to build against.
 
-### 2026-08-03/04 — `MoveSet::write_into` decides drop-versus-board once per set
-
-Materializing the moves — what every engine except haitaka does at leaf parents, and what a search must do — cost roughly twice generation on the real-game fixture, and the expansion loop, not the allocation, is where it went. Nothing had ever optimized that loop.
-
-**What the iterator was paying per move.** `MoveSetIter::next` matches on `Option<Square>` to decide drop-versus-board on *every* call, and on the board path probes `promotions` first and falls through, so **every non-promoting move pays a failed pop**. `write_into` makes both decisions once per set and drains each destination bitboard in its own loop with `promote` a loop constant.
-
-The iterator stays — it is the right shape for a caller that consumes lazily or stops early. **`legal_moves()` is not that caller**, so it drives `write_into` too, which is where the public materializing API picks the gain up. That also gives `write_into` tree-level coverage: `callback_and_vec_apis_agree` and the differential both run through `legal_moves()`.
-
-Figures per id in `benches/history/2026-08-04-ded13fc.json`.
+### 2026-08-03/04 — `MoveSet::write_into` decides drop-versus-board once per set — [`aa44f8b`](https://github.com/sugyan/shunsai/commit/aa44f8b) (#13)
 
 - **`Bitboard::for_each_square` is the other half, and it is where the `u128` choice finally cost something.** `pop()` walks the `u128` directly: on aarch64 both `u128::trailing_zeros` and `x & (x - 1)` cost roughly twice their 64-bit counterparts. The 81 bits are contiguous, so the bulk walk takes the low word to exhaustion and then the high word, which is usually empty. It also builds squares unchecked where `pop` goes through the `extern "C"` `Square::from_u8`, which re-checks a range this type's invariant already guarantees.
 - **The gain tracks moves per `MoveSet`.** Everything removed is per-move, so a position whose sets are large collects most of it and one whose sets hold one or two moves collects almost none — startpos gains least, the in-check sweep nothing, because evasions are restricted to capturing the checker or interposing. **That also resolves an anomaly recorded as a refutation**: maxmoves cost *more* per move than matsuri only because the iterator's per-item drop dispatch fell hardest on the drop-heavy position. With it gone the ordering is monotone in set size again.
@@ -252,7 +224,7 @@ Figures per id in `benches/history/2026-08-04-ded13fc.json`.
 - **`out.reserve(self.len())` was in the first version and made small-set positions worse** — startpos slightly, the in-check sweep about twice as much. See *What optimizing this crate has taught*.
 - ⚠️ **`perft/matsuri-cb/3` is not comparable across this boundary.** It reads high with huge σ under whole-suite conditions but reproduces tightly in isolation at *every* revision tested, and its non-allocating twin is flat throughout. The id is measuring the allocator, not generation. **Which reading is the anomaly is undecided.** Treat that one id's series as broken across 2026-08-03/04.
 
-### 2026-08-06 — the per-*set* path: piece-indexed dispatch and per-origin promotion
+### 2026-08-06 — the per-*set* path: piece-indexed dispatch and per-origin promotion — [`bdf2836`](https://github.com/sugyan/shunsai/commit/bdf2836) (#15)
 
 **The decomposition came first, and it inverted the plan.** `movegen/<pos>-cb` measures one generation call on one position, so stubbing a component does **not** change the shape of any tree. At startpos both `check_info` and `king_danger` are output-preserving — no checks, no pins, all three king candidates already safe — so those cells are exact rather than indicative.
 
@@ -274,24 +246,74 @@ The three origin-loop rows are additive and account for the whole loop; the two 
 - **Rejected, and it is the candidate this work was planned around: moving the origin loops onto `Bitboard::for_each_square`.** Splitting it three ways, **on the initial position**: the delegation itself is neutral, `generate_normal`'s two loops cost about +20 %, and `king_danger`/`check_info`'s scans about +14 %. Both shrink on the other two positions, and the scan conversion is roughly neutral on maxmoves. The `generate_normal` conversion costs the *materializing* path as much as the counting one, which is what one would expect if the extra closure layer stops the listener inlining. **The scan conversion touches no listener, and its cost is not explained** — the accumulators becoming `&mut` captures is the obvious suspect and is untested. **Recorded as measured, not as understood.**
 - **Guards, by sabotage.** `attacks_of_matches_the_per_kind_tables` holds the folded dispatch to the `match` it replaced; `piece_index_matches_as_u8` pins the index arithmetic against `Piece::as_u8`, an upstream representation this crate now reads through a mask. **One sabotage is caught by the differential alone**: a row filed under the wrong kind (`ProSilver` given silver's table) moves **no perft value at any of the three fixtures**.
 
-### 2026-08-07 — `check_info`'s sniper scan comes out of ray tables; sharing the slider union is a loss
-
-**Adopted: the three "which sliders would reach the king on an *empty* board" lookups have no occupancy to consult, so they are fixed by the king square** — and by `us` for the lance, which only attacks forwards, which is why `LANCE_RAYS` is the one of the three with a colour row. They were nevertheless going through the live slider backend; ray tables make them one load apiece.
+### 2026-08-07 — `check_info`'s sniper scan comes out of ray tables; sharing the slider union is a loss — [`ffd4056`](https://github.com/sugyan/shunsai/commit/ffd4056) (#16)
 
 - **Rejected: carrying the enemy-slider union from `check_info` to `king_danger`.** Both build the same five-kind union, so passing it instead (a third `CheckInfo` field) looked free. It measured **eight of ten ids worse**. **Losing is itself the refutation** — if the union were genuinely being built twice, deleting one construction could not make anything slower. It was not: the five loads read memory nothing writes between the two call sites, and the compiler was already sharing them. What the change did was grow `CheckInfo` from 32 to 48 bytes and thread it deeper. **This bounds Open question 5 at ≤1 %.**
 - **The prediction was several times too large**, and the reason generalizes: a per-call figure from the `internals/*` sweep over-states what that call costs in a hot loop. The sweep walks 81 origins where `check_info` asks about **one** square every node, so its table lines are already warm — the obvious explanation, **not verified**.
 - **Guards, by sabotage.** `empty_board_rays_match_the_naive_backend` holds all three tables to `sliders::naive` — **to `naive` rather than the live backend, so the guard does not rest on the thing `sliders/tests.rs` is itself checking**. Giving `ROOK_RAYS` the diagonal steps is caught broadly, but **not** by the initial-position or matsuri default-depth perft values.
 - ⚠️ **A value consumed only by `king_danger` can hide from every perft value.** Dropping `ProRook` from the carried union — so a dragon's sliding attacks never enter the danger set — was caught by the differential **alone**, with all three deep perft values holding. The reason is coverage, not structure (next entry). The fixture list accordingly gained its only position with promoted sliders.
 
-### 2026-08-07 — `king_danger`'s sliders are filtered by where they could bear on the king
-
-The entry above left two candidates inside `king_danger`, both about making the *loop body* cheaper. **Neither was the opportunity. The loop's trip count was.** It skipped a step piece unless it stood in `STEP_ATTACKER_ZONE`, but took every enemy slider wherever it stood, on the stated grounds that "sliders reach from anywhere and are always included".
-
-**Reaching from anywhere is not reaching from anywhere *to here*.** The squares a rook or bishop can bear on a *king neighbour* from are as fixed by the king square as a knight's are. The zone tables and their superset property are documented in `tables.rs`; what matters here is that each covers a little over half the board on average, with a wide spread — smallest in a corner, largest in the centre — so **the filter earns most of its keep while the king is still at home**. At the initial position **all four** enemy sliders are dropped and the loop runs **zero** times.
-
-The largest gain since the danger bitboard itself, and it sorts by how many sliders the filter drops (`benches/history/2026-08-07-d056511.json`).
+### 2026-08-07 — `king_danger`'s sliders are filtered by where they could bear on the king — [`1a41320`](https://github.com/sugyan/shunsai/commit/1a41320) (#17)
 
 - ⚠️ **The step term applies to every enemy piece, not only the non-sliders, and that is load-bearing.** A horse's orthogonal sidesteps and a dragon's diagonal ones lie on *neither* piece's rays, so the two slider zones miss them. **Deleting the term as redundant is tidying that would silently break this.** `slider_attacker_zones_cover_every_slider` asserts the pair covers every slider attack on every king neighbour, exhaustively, plus the monotonicity of slider attacks in occupancy — which is what makes an empty-board sweep sufficient, and which nothing else in the suite pinned.
 - **Correction: a `king_danger` under-report is *not* structurally invisible to perft.** The reasoning had been that because `king_danger` only ever subtracts, an omission produces an illegal king move and no change in node count. **That does not follow** — an extra generated move *is* an extra node, and `perft(1)` counts generated moves directly. Three sabotages of this filter are each rejected by **all three deep perft values**. What the dragon omission above demonstrated is narrower: perft only reports the mistake where some position in the tree has the omitted piece bearing on a king destination. **Perft is a real net here and a coverage-dependent one.**
 - **The `maxmoves` single-position ids moved for reasons that are not this mechanism.** That root has **no enemy slider at all**, so the filter cannot save an iteration and strictly adds two loads and two ANDs; `movegen/maxmoves-cb` improved anyway and `movegen/maxmoves-buf` regressed, both from code layout. **Recorded as measured, not as understood.** `perft/maxmoves-cb/2` *is* mechanism: at depth 2 the side to move changes and those five sliders become the enemy's.
 - **The control is imperfect, and the honest reason is this change rather than the machine.** `internals/bishop-attacks-magic`, which this change cannot reach, moved — the suspect being that two new `static` tables shift `.rodata`, and the `internals/*` ids sweep the magic backend's ~486 KiB. The signal is several times the control drift and opposite in sign, which is what makes the run recordable; **the in-check subset is the thinnest cell and the first to re-measure if this read is ever doubted.**
+
+### 2026-08-11 — v0.1.0's packaging: what ships, what the MSRV is, and what declaring it costs — [`f41ccee`](https://github.com/sugyan/shunsai/commit/f41ccee) (#25)
+
+Three of DESIGN.md §6's release prerequisites, decided together because one CI step checks all three.
+
+- **The tarball is the library.** `include` ships `src`, `README.md`, `CHANGELOG.md` and the two licences — 20 files. The three documents, `tests/`, `examples/`, `scripts/` and the committed `benches/history/*.json` snapshots are for people working in this repository and are the bulk of the tree. `include` names the `src` **directory**, not `src/**/*.rs`: the packaging guard only compiles the default-feature lib, so a future generated table or `include_str!` asset dropped by an extension-scoped glob would not be noticed until a consumer enabled the feature that reads it.
+- **`examples/gen_magics.rs` deliberately does not ship, and the shipped code no longer points at it.** The provenance guard for the multipliers is the generator plus CI's `--check` (2026-07-28), and both are repository-level. `magics.rs` had been instructing its reader to run a command the tarball cannot execute, and `magic.rs` linked `../../examples/gen_magics.rs`, which 404s on docs.rs; both now name the file without implying it is present. **Shipping the generator (~9 KiB) stays open** if a downstream ever needs the claim checkable from the artifact alone. Note the class: a relative-URL link is invisible to `broken_intra_doc_links`, so `-D warnings` cannot catch the next one — `grep -rn '](\.\./' src/` is the check.
+- **MSRV is 1.88, and the edition does not set it.** Bracketed rather than reasoned about: 1.85 and 1.87 both fail with `error[E0658]: 'let' expressions in this position are unstable`; 1.88 builds. The single cause is the let-chain in `movegen.rs`'s pawn-drop-mate filter — edition 2024 alone would have suggested 1.85, **so the floor is one rewrite away from 1.85 if a consumer ever needs it.**
+- ⚠️ **Declaring `rust-version` is not free: it switches the resolver to MSRV-aware mode.** Every job, and every contributor without a lockfile, silently drops from `Locking … to latest compatible versions` to `… to latest Rust 1.88 compatible versions`. Three costs, none of them the one intended: the stable jobs stop testing the graph a consumer resolves, criterion runs before and after the change stop being comparable, and the `msrv` job can never fail over a dependency that raises **its** floor — it selects the older release instead. CI sets `CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS=allow` to undo it. **`Cargo.lock` is untracked, so nothing else would have recorded the change.**
+- **The backend flags are made exclusive, so `--all-features` is a build error and CI no longer uses it anywhere.** Cargo features are additive and cannot express "pick one"; the priority order standing in for it let `slider-naive` win, so every tool handed `--all-features` silently inspected the oracle — which is how clippy came to lint only the oracle's configuration and how docs.rs would have documented it. Preparing a feature to be *exclusive* and then asking for *all* of them is incoherent, and the several comments warning about it were handling a self-inflicted wound. A `compile_error!` replaces the order. CI names `--features bench-internals`, which compiles all three backends with `magic` live, and adds a `cargo check --lib` per override flag because each selecting arm is a single `use … as active` that nothing else compiles. `qugiy.rs` and `naive.rs` lost `#![allow(dead_code)]` in the process and are dead-code-checked for the first time.
+- **Rejected: gating `magic` out of the override builds too.** Symmetry would say it should be, but its geometry helpers (`LineKind`, `relevant_mask`, the multipliers) live in `sliders.rs` and `magics.rs`, so removing `magic` under `slider-naive` / `slider-qugiy` leaves those dead — trading one suppressed warning for four. `magic` stays unconditional as the unflagged default, and `magic.rs` keeps the `allow` with that as its stated reason.
+- ⚠️ **Cost of `compile_error!`, accepted: it is unfriendly under feature unification.** Two crates in one dependency graph each enabling a different flag break the build with no fix available locally — which is the usual reason the priority-order pattern exists. Both flags are documented maintainer-only knobs that no legitimate consumer enables, and **v0.1.0 freezes them into the published surface**, so the guard belongs before the release rather than after.
+- Making the default-features doc run possible needed `sliders.rs`'s intra-doc link to `naive` dropped: the module is cfg-gated, so the link cannot resolve in the configuration docs.rs renders.
+- **Rejected: `[package.metadata.docs.rs] all-features = false`.** Written first, then removed — it is docs.rs's default, and the backend selection is `pub(crate)` while docs.rs does not pass `--document-private-items`, so docs.rs could not have rendered the oracle either way. The hazard it claimed to close was never live.
+- **Guards, and their edges.** `cargo publish --dry-run` on every PR fails on an `include` that drops a source the default-feature **lib** needs — and only that: the `warning: ignoring … is not included in the published package` lines for the dropped examples, tests and bench are warnings cargo exits 0 on. The `msrv` job runs `cargo check --lib --all-features`, every feature because `slider-naive` and `bench-internals` gate lib modules nothing else compiles at 1.88, and dev-dependencies stay out because they do not constrain a consumer. **Neither guard is a required status check on `main`; only `check` is.**
+
+### 2026-08-11 — `do_move` returns an `Undo`, so `Position` owns nothing on the heap — [`e039cd7`](https://github.com/sugyan/shunsai/commit/e039cd7) (#22)
+
+- **`do_move` is deliberately not `#[must_use]`.** Replaying a game forward and never taking it back is a first-class use — `tests/differential.rs`, `tests/rules.rs` and `examples/gen_bench_positions.rs` all do it — and marking it would put `let _ =` on legitimate code.
+- **`Undo`'s fields stay private**, so the representation is free to change; nothing outside needs them.
+- **The mispairing that `undo_move` used to catch is now the caller's to avoid.** `states.pop()` panicked on an empty stack; passing the wrong `Undo` is silent. The contract is documented on `do_move`, and the shape that makes it hard to get wrong — an `Undo` bound in the same scope as the `do_move` that produced it — is the one every driver here uses.
+- **`with_drop` survives** rather than folding into clone-and-`do_move`, which it is now nearly identical to. It touches the pawn-drop-mate hot path, so deleting it wants its own measurement rather than a ride on this one.
+- **Unblocks copy-make (open question 10).** It was described as needing "a `Position` redesign, not a driver tweak"; it is now a driver tweak.
+- **It costs `do_undo/games-v1` about 4 %, and that is the whole of the durable cost.** Measured 2026-08-12: a full-suite paired A/B, then — on a quiet machine, five order-alternating passes per binary against the ids in question — **every head reading above every base reading**, controls at −1.5..−0.05 %. The `Undo` now round-trips through the caller (returned by value, stored, reloaded, passed back) where it used to be written once into the position's own `Vec`. Small, explained, and the price of the shape; open question 9 is where do/undo gets optimized, and it now has a reason to be taken.
+- **The `movegen/*-buf` swings are code layout, not mechanism, and the test that separates them is in the suite already.** The three `perft/*-cb-buf` walks thread the identical buffer through a whole tree and are flat (+0.7..+2.4 %, inside the control band). The five single-call `movegen/*-buf` ids, running that same code once per iteration, scatter **−2.0 % to +19.0 % — in both directions**. A mechanism pushes one way. `movegen/maxmoves-buf` is the id 2026-08-07 already named the largest single mover in either direction; it is this crate's most layout-volatile measurement and should be read as one.
+- **Rejected: writing `with_drop`'s copy out again instead of `self.clone()`.** The obvious suspect, since the clone replaced an explicit field copy that inlined. Built and measured three ways against base: it moves nothing (`maxmoves-buf` +19.3 % vs the clone's +20.8 %, `sampled-v1-buf` +8.5 % vs +8.5 %, `do_undo` +3.8 % vs +3.9 %). Every field of `Position` is `Copy`, so the derived `Clone` was already lowering to a copy. **The hypothesis was wrong and the change is not kept** — recorded so it is not re-derived.
+
+### 2026-08-11 — what v0.1.0 freezes, and what it deliberately leaves out — [`67e454a`](https://github.com/sugyan/shunsai/commit/67e454a) (#23)
+
+v0.1.0 is the last point at which an API break is free, so the public surface was audited once, deliberately, rather than an item at a time as each consumer asks. The `states: Vec<State>` move is recorded in its own entry; this one is the rest, including what was left alone and why.
+
+**The instrument.** `examples/search.rs` is a fixed-depth alpha-beta — material evaluation, captures-first ordering, a transposition table on `key()` — importing `shunsai::Position` and `shogi_core` and nothing else. It is built on **default features**, which is what makes the check real: `internals` is feature-gated, so a slip into crate internals cannot compile there. It exists because **perft is not a consumer**: it never keeps a key, never cuts off a subtree, and never asks what a move captures. (`tests/` were already public-API-only, being integration tests. What none of them were is *search-shaped*.)
+
+**It found no gap that needs a break.** Everything it wanted and could not get — `gives_check`, `attackers_to`, staged generation, a `Position` → `PartialPosition` conversion — is a pure addition, and under Cargo's semver for 0.x an addition ships in 0.1.x with no version change on the consumer side. This is why "predict what `rinsai` will need" is the wrong question to answer before the freeze: **only breaks have a deadline**, and the E1 list can arrive whenever E1 does, each with its measurement.
+
+**`MoveSet` keeps its public fields, and with them its representation.** Rust has no private field on a public variant, so opacity is all-or-nothing, and a consumer's move ordering wants to `match` `Normal` against `Drop`. The 48 bytes are fixed by the *design* — two destination bitboards — not by field visibility, so hiding the fields would not buy the freedom to shrink it. What the public fields do buy is concrete: **a caller can filter a set by a target mask today**, off `promotions` and `non_promotions`, which is much of what staged generation would otherwise be asked for first. This closes the `MoveSet`-size question 2026-07-29 reopened.
+
+**`Position` does not derive `Copy`**, though every field now would allow it. At 368 bytes it is small enough to copy deliberately and large enough that copying it *by accident* in a search's hot loop would not announce itself; `.clone()` at a copy-make site puts the cost in the source, where a reader will meet it. Adding `Copy` later is a break, so this is the window's decision rather than a default — and it is the one item here most likely to be revisited, because copy-make is exactly the caller that would want it.
+
+**`Hash` is not derived, and `MoveSetIter` gains no public constructor.** Both are additions if ever wanted. A search wants `key()` rather than `Hash`, and `MoveSetIter` is reachable through `into_iter`.
+
+**No `Bitboard` u128 interop.** `from_bits` is the one constructor that does not structurally guarantee bits 81.. are clear, and only a `debug_assert!` holds it — `for_each_square`'s safety argument names it, and names a **debug** `cargo test` as part of its own guard. A public `from_u128` would therefore hand a release-build consumer unsound `Square` construction, so it would have to be an `unsafe fn` or mask on the way in, and nothing has asked for either. The 2026-07-23 entry's "interop via `to_u128` stays trivial" is a reason to keep the crate's own bitboard, **not a promise of shipped API** — there is no contradiction to resolve.
+
+### 2026-08-11 — provenance scan before v0.1.0
+
+[DESIGN.md](./DESIGN.md) §7 requires one before publishing, and it had never been run. Done, against the pinned GPL submodules of the local benchmarks repository — apery, apery_rust, YaneuraOu, cshogi, rshogi, Fairy-Stockfish and the old yasai — over their Rust, C, C++ and Python sources.
+
+**The scan lives in that repository rather than this one**, for the reason the cross-engine perft harness does: it cannot run without the corpus, so a copy here would be a script nobody but its author can execute, going stale unwatched. Apparatus sits with the corpus; this file keeps the result. The method is three fixed-string sweeps — the magic multipliers, the other long hex constants, and every non-comment source line of 40 characters or more with its leading whitespace trimmed so a re-indented copy still matches — plus the submodule pins it ran against, so a result is reproducible rather than asserted.
+
+**Result: no verbatim reuse.** Every hit is accounted for.
+
+- **The 243 magic multipliers appear in none of the seven.** This is the check that carries the weight: the tables are the one part of the tree worth copying, and the one part whose origin CI already asserts by regenerating them. The scan is the independent half of that pair — `--check` proves our generator produces these numbers, and this proves nobody else's source contains them.
+- **Three constants matched cshogi.** They are splitmix64's — the golden-ratio increment and the two mixing multipliers. Having them *is* using splitmix64, which is public domain (CC0); the 2026-07-23 entry records why it was chosen. cshogi using it too is not evidence of anything.
+- **Verbatim line overlap is four lines with yasai and three with rshogi at ≥ 40 characters**, two and zero at ≥ 60. Each is either a signature Rust forces to be written exactly one way — `Debug::fmt`, `Iterator::size_hint`, `bitxor_assign`, a `derive` line — or shared *data* rather than expression: the `use shogi_core::{…}` import both crates need from the dependency they share, and the max-moves SFEN, whose provenance §6 already gives.
+
+⚠️ **What this establishes, and what it does not.** It rules out a pasted table and a copied block, which is what the obligation in §7 is about. It is a trimmed-substring search, not a token-level similarity measure, so it would not catch a transliteration that renamed as it went. The defence against *that* is the one §7 already names — an incremental development history — not this scan. Re-run it before each release; the corpus moves, and the active upstreams among these move most.
+
+**It is deliberately output-safe**, and a re-implementation should keep that property. `grep -o` echoes the matched *pattern*, which is always ours, never the corpus line it was found in — so running it does not put GPL source in front of whoever, or whatever, reads the output. That matters here because CLAUDE.md's top rule forbids the sessions writing this crate from reading those sources at all, which a scan that dumped matching corpus lines would defeat.

@@ -30,9 +30,9 @@ fn perft(position: &mut Position, depth: u32) -> u64 {
     });
     let mut nodes = 0;
     for mv in moves {
-        position.do_move(mv);
+        let undo = position.do_move(mv);
         nodes += perft(position, depth - 1);
-        position.undo_move(mv);
+        position.undo_move(mv, undo);
     }
     nodes
 }
@@ -50,9 +50,9 @@ fn callback_and_vec_apis_agree() {
         }
         let mut nodes = 0;
         for mv in moves {
-            position.do_move(mv);
+            let undo = position.do_move(mv);
             nodes += perft_vec(position, depth - 1);
-            position.undo_move(mv);
+            position.undo_move(mv, undo);
         }
         nodes
     }
