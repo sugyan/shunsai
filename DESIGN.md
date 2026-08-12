@@ -109,7 +109,7 @@ Correctness oracle (not a speed target): [`shogi_legality_lite`](https://github.
   - the `states: Vec<State>` move out of `Position`: **taken** — `do_move` returns an `Undo`, so `Position` owns nothing on the heap and the break is spent before it would cost `rinsai` a version (decided 2026-08-11, [DECISIONS.md](./DECISIONS.md))
   - the **provenance scan** (§7): **run, no verbatim reuse**. Re-run before each release — the corpus moves (2026-08-11, [DECISIONS.md](./DECISIONS.md))
   - what the published tarball contains: `include` ships `src/`, the README, `CHANGELOG.md` and the two licences; the documents, fixtures and `benches/history/*.json` stay in the repository (decided 2026-08-11, [DECISIONS.md](./DECISIONS.md))
-  - how the release is cut: **release-plz**, whose release PR needs a token that is not `GITHUB_TOKEN` or the ruleset makes it unmergeable (2026-08-12, [DECISIONS.md](./DECISIONS.md))
+  - how the release is cut: **release-plz**, publishing over Trusted Publishing rather than a registry secret — which means **v0.1.0 itself is published by hand**, since crates.io only takes that configuration against a crate that already exists. Procedure in [RELEASING.md](./RELEASING.md), rationale 2026-08-12 in [DECISIONS.md](./DECISIONS.md)
   - MSRV: `rust-version = "1.88"`, set by one let-chain rather than by the edition, gated by the `msrv` CI job (decided 2026-08-11, [DECISIONS.md](./DECISIONS.md))
   - `keywords = ["shogi","move-generation","bitboard","game","perft"]`, `categories = ["game-development","algorithms"]` (already in `Cargo.toml`). **`usi` was dropped**: the five-keyword cap makes the list a set of claims, and USI is a §2 non-goal — a search for it should not land here.
 
