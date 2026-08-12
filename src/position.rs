@@ -7,9 +7,13 @@ use shogi_core::{Color, Hand, Move, PartialPosition, Piece, PieceKind, Square, T
 use crate::bitboard::Bitboard;
 use crate::zobrist;
 
-/// Per-move information needed by [`Position::undo_move`].
-#[derive(Clone)]
-struct State {
+/// What [`Position::undo_move`] needs to restore the position a move was
+/// made in, returned by [`Position::do_move`].
+///
+/// The caller holds it rather than the position: a search already keeps a
+/// stack, and a [`Position`] that owned one could not be a plain value.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Undo {
     captured: Option<Piece>,
     key: u64,
 }
@@ -20,7 +24,10 @@ struct State {
 /// The board state is stored redundantly (mailbox + bitboards); moves are
 /// assumed to be legal (generate them with [`Position::legal_moves`]).
 /// A side may have no king (as in tsume-shogi problems).
-#[derive(Clone)]
+///
+/// A `Position` is a plain value: it owns nothing on the heap, so cloning it
+/// copies and does not allocate.
+#[derive(Clone, PartialEq, Eq)]
 pub struct Position {
     board: [Option<Piece>; Square::NUM],
     /// One bitboard per [`PieceKind`], both colors together.
@@ -31,7 +38,6 @@ pub struct Position {
     ply: u16,
     kings: [Option<Square>; Color::NUM],
     key: u64,
-    states: Vec<State>,
 }
 
 impl Position {
@@ -50,7 +56,6 @@ impl Position {
             ply: partial.ply(),
             kings: [None; Color::NUM],
             key: 0,
-            states: Vec::new(),
         };
         for square in Square::all() {
             if let Some(piece) = partial.piece_at(square) {
@@ -131,16 +136,20 @@ impl Position {
     }
 
     /// Makes `mv` on the board. `mv` must be legal in this position.
-    pub fn do_move(&mut self, mv: Move) {
+    ///
+    /// Returns what [`Position::undo_move`] needs to take it back. Moves are
+    /// undone in the reverse of the order they were made, each with its own
+    /// [`Undo`].
+    pub fn do_move(&mut self, mv: Move) -> Undo {
         let side = self.side_to_move;
         let captured = match mv {
             Move::Normal { to, .. } => self.piece_at(to),
             Move::Drop { .. } => None,
         };
-        self.states.push(State {
+        let undo = Undo {
             captured,
             key: self.key,
-        });
+        };
         match mv {
             Move::Normal { from, to, promote } => {
                 let piece = self.piece_at(from).expect("do_move: no piece to move");
@@ -169,11 +178,12 @@ impl Position {
         self.side_to_move = side.flip();
         self.key ^= zobrist::side_key();
         self.ply = self.ply.wrapping_add(1);
+        undo
     }
 
-    /// Undoes `mv`, the last move made with [`Position::do_move`].
-    pub fn undo_move(&mut self, mv: Move) {
-        let state = self.states.pop().expect("undo_move: no move to undo");
+    /// Undoes `mv`, the last move made with [`Position::do_move`], using the
+    /// [`Undo`] that call returned.
+    pub fn undo_move(&mut self, mv: Move, undo: Undo) {
         let side = self.side_to_move.flip();
         match mv {
             Move::Normal { from, to, promote } => {
@@ -187,7 +197,7 @@ impl Position {
                     placed
                 };
                 self.put_piece(from, piece);
-                if let Some(captured) = state.captured {
+                if let Some(captured) = undo.captured {
                     let piece_kind = captured.piece_kind();
                     self.remove_from_hand(side, piece_kind.unpromote().unwrap_or(piece_kind));
                     self.put_piece(to, captured);
@@ -201,37 +211,19 @@ impl Position {
         self.side_to_move = side;
         self.ply = self.ply.wrapping_sub(1);
         // Cheaper than reversing every XOR above.
-        self.key = state.key;
+        self.key = undo.key;
     }
 
-    /// This position with `piece` dropped on `to`, as a fresh position with
-    /// no undo history. The drop must be legal apart from any pawn-drop-mate
-    /// rule.
+    /// This position with `piece` dropped on `to`. The drop must be legal
+    /// apart from any pawn-drop-mate rule.
     ///
-    /// Exists so move generation can simulate a drop without allocating.
-    /// `self.clone()` deep-copies `states`, and the copy's capacity is then
-    /// exact, so `do_move`'s own `states.push` reallocates immediately —
-    /// two heap operations per simulated drop, which measurably dominated
-    /// pawn-drop-mate detection. Copying the position by value and starting
-    /// from an empty `Vec` allocates nothing.
-    ///
-    /// The result is a position, not a continuation: it is complete (board,
-    /// hands, key and ply all updated) but knows nothing of the moves that
-    /// led to it, so this drop cannot be undone on it.
+    /// Exists so move generation can simulate a drop without disturbing the
+    /// position it was asked about. The result is a position, not a
+    /// continuation: the caller only asks it a question and drops it, so
+    /// nothing is returned with which to take the drop back.
     pub(crate) fn with_drop(&self, piece: Piece, to: Square) -> Self {
-        // Every field except `states`, which is deliberately left empty.
         // `position_after_drop_matches_do_move` holds this to `do_move`.
-        let mut next = Self {
-            board: self.board,
-            piece_bb: self.piece_bb,
-            color_bb: self.color_bb,
-            hands: self.hands,
-            side_to_move: self.side_to_move,
-            ply: self.ply,
-            kings: self.kings,
-            key: self.key,
-            states: Vec::new(),
-        };
+        let mut next = self.clone();
         let side = next.side_to_move;
         debug_assert_eq!(piece.color(), side);
         debug_assert!(next.piece_at(to).is_none());
@@ -326,22 +318,6 @@ impl fmt::Debug for Position {
     }
 }
 
-/// Equality of the position itself: the undo history is not compared.
-impl PartialEq for Position {
-    fn eq(&self, other: &Self) -> bool {
-        self.board == other.board
-            && self.piece_bb == other.piece_bb
-            && self.color_bb == other.color_bb
-            && self.hands == other.hands
-            && self.side_to_move == other.side_to_move
-            && self.ply == other.ply
-            && self.kings == other.kings
-            && self.key == other.key
-    }
-}
-
-impl Eq for Position {}
-
 impl Default for Position {
     fn default() -> Self {
         Self::startpos()
@@ -402,8 +378,9 @@ mod tests {
         ];
         let mut position = Position::startpos();
         let mut snapshots = vec![position.clone()];
+        let mut undos = Vec::new();
         for &m in &moves {
-            position.do_move(m);
+            undos.push(position.do_move(m));
             snapshots.push(position.clone());
         }
         // The bishop exchange put a bishop in each hand; Black dropped theirs.
@@ -418,7 +395,7 @@ mod tests {
         for &m in moves.iter().rev() {
             assert_eq!(&position, snapshots.last().unwrap());
             snapshots.pop();
-            position.undo_move(m);
+            position.undo_move(m, undos.pop().unwrap());
         }
         assert_eq!(&position, &snapshots[0]);
         assert_eq!(position, Position::startpos());
@@ -448,8 +425,8 @@ mod tests {
 
     /// `with_drop` must reach exactly the position `do_move` reaches, for
     /// every hand piece on every empty square it may legally occupy.
-    /// `PartialEq` compares every field except the undo history, so this
-    /// also catches a field added to `Position` and missed in `with_drop`.
+    /// `PartialEq` compares every field, so this catches a step that
+    /// `do_move`'s drop path gains and `with_drop`'s tail does not.
     #[test]
     fn position_after_drop_matches_do_move() {
         // Two positions with pieces of both colors in hand: a fresh game
@@ -502,10 +479,11 @@ mod tests {
         assert!(checked > 100, "test covered only {checked} drops");
     }
 
-    /// The simulated position carries no history, so it cannot undo the
-    /// drop — but it is otherwise a normal position and can be played on.
+    /// The simulated position is complete, not a half-built one good only
+    /// for the legality question it was made to answer: it can be played on
+    /// and taken back like any other.
     #[test]
-    fn with_drop_starts_a_fresh_history() {
+    fn with_drop_result_can_be_played_on() {
         let bishop = Piece::new(PieceKind::Bishop, Color::White);
         let square = Square::new(5, 5).unwrap();
         // White is to move after 7g7f, but has nothing in hand yet.
@@ -516,8 +494,8 @@ mod tests {
         assert_eq!(next.piece_at(square), Some(bishop));
         assert_eq!(next.side_to_move(), Color::Black);
         let advance = mv((2, 7), (2, 6), false);
-        next.do_move(advance);
-        next.undo_move(advance);
+        let undo = next.do_move(advance);
+        next.undo_move(advance, undo);
         assert_eq!(next, with_hand.with_drop(bishop, square));
     }
 

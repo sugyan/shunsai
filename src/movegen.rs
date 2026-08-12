@@ -50,13 +50,22 @@ pub enum MoveSet {
     /// square in `promotions` alone is a compulsory promotion, and one in
     /// `non_promotions` alone cannot promote at all.
     Normal {
+        /// The piece being moved.
         piece: Piece,
+        /// The square it stands on.
         from: Square,
+        /// Destinations reached by promoting.
         promotions: Bitboard,
+        /// Destinations reached without promoting.
         non_promotions: Bitboard,
     },
     /// Drops of `piece` from hand.
-    Drop { piece: Piece, to: Bitboard },
+    Drop {
+        /// The piece being dropped.
+        piece: Piece,
+        /// The squares it may be dropped on.
+        to: Bitboard,
+    },
 }
 
 impl MoveSet {
@@ -936,9 +945,9 @@ mod tests {
                 return;
             }
             for mv in position.legal_moves() {
-                position.do_move(mv);
+                let undo = position.do_move(mv);
                 walk(position, depth - 1, nodes, dropped, dragon_only, horse_only);
-                position.undo_move(mv);
+                position.undo_move(mv, undo);
             }
         }
         let mut nodes = 0;
@@ -1083,9 +1092,9 @@ mod tests {
                 return;
             }
             for mv in position.legal_moves() {
-                position.do_move(mv);
+                let undo = position.do_move(mv);
                 walk(position, depth - 1, nodes, doubles, double_pins);
-                position.undo_move(mv);
+                position.undo_move(mv, undo);
             }
         }
         let mut nodes = 0;

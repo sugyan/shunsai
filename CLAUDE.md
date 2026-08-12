@@ -79,6 +79,8 @@ contradicting the file it was copied from. Two rules, both cheap:
 
 - **A number appears in prose only if a future decision depends on the number itself.** Otherwise cite the bench id and let `benches/history/*.json` hold it. A figure you cannot check against that file should not be written down.
 - **Compress, do not append a correction.** When an entry's conclusion is superseded or generalized, rewrite that entry — git holds the old text. A log where later bullets qualify earlier ones is how a document comes to contradict itself.
+- **Do not retell a commit; link it.** An adopted change already has a primary source written against the tree it describes. A DECISIONS.md entry for one is a heading, a link, and then *only* what the commit does not hold — what was rejected, what guard covers it, what is still open, what a later entry corrected. Measured 2026-08-12: 70 % of the log was retelling, and the retellings had already drifted (one said "roughly a quarter" where its commit says 23.7 %).
+- **Write out what has no primary source.** A rejected candidate was never committed, so nothing but this file records it — and "check it was not already tried" is the reason this file exists. Same for coverage holes, corrections spanning two commits, and decisions with no code to point at. Compress these last, not first.
 
 Before adding to any of the three documents, ask which one owns the fact
 (the table above), and whether it is already stated somewhere else. It usually is.

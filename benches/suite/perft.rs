@@ -20,9 +20,9 @@ fn perft(position: &mut Position, depth: u32) -> u64 {
     }
     let mut nodes = 0;
     for mv in moves {
-        position.do_move(mv);
+        let undo = position.do_move(mv);
         nodes += perft(position, depth - 1);
-        position.undo_move(mv);
+        position.undo_move(mv, undo);
     }
     nodes
 }
@@ -48,9 +48,9 @@ fn perft_cb(position: &mut Position, depth: u32) -> u64 {
     });
     let mut nodes = 0;
     for mv in moves {
-        position.do_move(mv);
+        let undo = position.do_move(mv);
         nodes += perft_cb(position, depth - 1);
-        position.undo_move(mv);
+        position.undo_move(mv, undo);
     }
     nodes
 }
@@ -84,9 +84,9 @@ fn perft_cb_buf(position: &mut Position, depth: u32, buf: &mut Vec<Move>) -> u64
     let mut i = base;
     while i < buf.len() {
         let mv = buf[i];
-        position.do_move(mv);
+        let undo = position.do_move(mv);
         nodes += perft_cb_buf(position, depth - 1, buf);
-        position.undo_move(mv);
+        position.undo_move(mv, undo);
         i += 1;
     }
     buf.truncate(base);
@@ -137,9 +137,9 @@ fn perft_mat<const WI: bool>(position: &mut Position, depth: u32, buf: &mut Vec<
     let mut i = base;
     while i < buf.len() {
         let mv = buf[i];
-        position.do_move(mv);
+        let undo = position.do_move(mv);
         nodes += perft_mat::<WI>(position, depth - 1, buf);
-        position.undo_move(mv);
+        position.undo_move(mv, undo);
         i += 1;
     }
     buf.truncate(base);
