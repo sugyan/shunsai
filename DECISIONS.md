@@ -12,7 +12,8 @@ Recorded so decisions are revisited deliberately instead of re-litigated.
   already has a primary source: the commit that made it, written against the tree it
   describes, with the figures that were true of it. Retelling it here produces a lossier
   copy that nothing re-checks — the 2026-07-30 entry said "roughly a quarter" where its
-  commit says 23.7 %. So an adopted change gets a heading, a link, and then only the parts
+  commit says 23.7 %, and 70 % of this log was retelling when the rule was adopted
+  (2026-08-12). So an adopted change gets a heading, a link, and then only the parts
   the commit does not hold.
 - **What has no primary source is written out properly, and that is most of this file's
   value**: candidates that were *rejected* (there is no commit to find, which is why
