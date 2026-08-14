@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1](https://github.com/sugyan/shunsai/compare/v0.1.0...v0.1.1) - 2026-08-14
+
+### Documentation
+
+- correct what bounds a release's range and what decides the version, and prune the log ([#34](https://github.com/sugyan/shunsai/pull/34))
+- cut the README to what a consumer needs, and put each release fact in the file that owns it ([#31](https://github.com/sugyan/shunsai/pull/31))
+
 ## [0.1.0] - 2026-08-13
 
 First release: fully legal shogi move generation on `shogi_core` types.

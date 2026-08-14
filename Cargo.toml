@@ -1,6 +1,6 @@
 [package]
 name = "shunsai"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 # Let-chains, not the edition, set this floor: edition 2024 alone would build
 # on 1.85.
