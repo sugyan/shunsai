@@ -44,8 +44,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # Opens (and keeps updating) the release PR: the version bump that
-  # cargo-semver-checks agrees with, and the CHANGELOG entry built from the log.
+  # Opens (and keeps updating) the release PR.
   #
   # RELEASE_PLZ_TOKEN, *not* the default GITHUB_TOKEN. A pull request opened with
   # GITHUB_TOKEN does not trigger workflow runs, and `main`'s ruleset requires
