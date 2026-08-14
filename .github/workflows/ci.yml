@@ -30,11 +30,11 @@ jobs:
       - run: cargo clippy --all-targets --features _bench-internals -- -D warnings
       # And again as a consumer gets it, with the optional modules absent.
       - run: cargo clippy --all-targets -- -D warnings
-      # Neither run above selects an override backend, and each arm is a single
-      # `use ... as active` that would otherwise compile nowhere.
-      - run: cargo check --lib --features slider-naive
-      - run: cargo check --lib --features slider-qugiy
       - run: cargo test
+      # The override backends, executed rather than only compiled — no other
+      # step here builds one with `sliders::active` not `magic`.
+      - run: cargo test --features slider-naive
+      - run: cargo test --features slider-qugiy
       # Compile the criterion benches; never run/measure them in CI.
       - run: cargo bench --no-run --features _bench-internals
       # The magic multipliers are the one generated file in the tree. Re-run
@@ -64,7 +64,7 @@ jobs:
   # `rust-version` is a promise to consumers; nothing else checks it. The lib
   # alone, because dev-dependencies do not constrain what a consumer needs —
   # but with `_bench-internals`, which is what pulls in the feature-gated
-  # modules (`naive`, `internals`) that a default build never compiles at all.
+  # modules (`naive`, `qugiy`, `internals`) that a default build never compiles.
   msrv:
     runs-on: ubuntu-latest
     steps:
