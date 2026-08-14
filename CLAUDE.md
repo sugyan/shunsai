@@ -54,7 +54,7 @@ Measure perft / movegen / do-undo with `criterion`. Comparison targets are pinne
 
 ⚠️ **Nothing in this repository may point at that checkout.** Not a path in a document, and above all not a script or CI step that needs it to run — it exists on one machine, so such a thing is unrunnable for everyone else and rots unwatched. Apparatus that needs the corpus belongs *in* that repository; this one keeps the result. **This is not a CI step, deliberately**: only a checkout that *has* the corpus can introduce such a path, so the check belongs where that checkout is, not in a job every contributor pays for. A local hook does it on edit.
 
-Method, fixtures, how to quiet the machine, and what makes a run recordable are in [BENCHMARKS.md](./BENCHMARKS.md). Read its "Standing rules" counterpart in [DECISIONS.md](./DECISIONS.md) before trusting a measurement — this machine's single-shot timings scatter far enough to invent a result.
+Method, fixtures, how to quiet the machine, and what makes a run recordable are in [BENCHMARKS.md](./BENCHMARKS.md). Read it before trusting a measurement — this machine's single-shot timings scatter far enough to invent a result.
 
 ## Documentation
 
