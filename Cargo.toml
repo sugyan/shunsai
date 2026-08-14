@@ -26,7 +26,8 @@ include = [
 [features]
 # Exposes crate internals to `benches/` only (see `src/internals.rs`).
 # Not public API: no stability guarantees, never enable as a dependency.
-bench-internals = []
+# The leading `_` is what keeps it off the docs.rs feature-flags page.
+_bench-internals = []
 # M4 slider-attack backend selection (see src/sliders/). The default is
 # `magic`, which won the bake-off; each flag replaces it with a different
 # backend, so the two are mutually exclusive — enabling both is a build error
@@ -49,7 +50,7 @@ shogi_usi_parser = "0.1"
 bench = false
 
 # Single bench target; the groups live in benches/suite/ and the internals
-# group is compiled in via the bench-internals feature.
+# group is compiled in via the _bench-internals feature.
 [[bench]]
 name = "suite"
 harness = false

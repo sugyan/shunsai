@@ -93,7 +93,7 @@ The builders index raw `array_index` arithmetic since `Square::shift`/`Square::a
 **The losing numbers are kept deliberately** (`benches/history/2026-07-27-8de28d8.json`). Qugiy is **within ~10 % of magic while needing no attack tables at all**, against magic's ~486 KiB of `.rodata`. If cache pressure ever outweighs raw latency — a real search, unlike a perft microbenchmark — the decision is worth **re-running rather than re-deriving**.
 
 - **The bake-off ran on the architecture most favourable to qugiy.** Its `o - 2r` needs the board mirrored for the downward ray, i.e. `u128::reverse_bits`, and aarch64 has a single-instruction bit reverse where x86-64 has none — and `line_attacks` mirrors twice per line, so a bishop pays it four times. Magic's cost is architecture-neutral. **A future x86-64 re-run should expect the gap to widen, and should measure `pext` (BMI2) as a third backend** — with the caveat that `pext` is microcoded and slow on AMD Zen1/Zen2.
-- **`naive` is the oracle and stays compiled**, under `cfg(any(test, feature = "slider-naive", feature = "bench-internals"))`; every backend is asserted equal to it exhaustively over each line's relevant occupancy.
+- **`naive` is the oracle and stays compiled** wherever something can reach it; every backend is asserted equal to it exhaustively over each line's relevant occupancy.
 
 #### 2026-07-28 — only the multipliers are generated, and two independent guards cover them
 

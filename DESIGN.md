@@ -62,7 +62,7 @@ examples/perft.rs
 benches/          # movegen / perft / do_undo
 ```
 
-The **swap boundary** for slider techniques is the attack-function signatures in `sliders.rs`, not a trait over `Bitboard`. `magic` and `qugiy` are always compiled; `naive` is the oracle the tests hold the others to, and is compiled under `cfg(any(test, feature = "slider-naive", feature = "bench-internals"))`. See the 2026-07-23 entry in [DECISIONS.md](./DECISIONS.md).
+The **swap boundary** for slider techniques is the attack-function signatures in `sliders.rs`, not a trait over `Bitboard`. `magic` is the live backend and the only one compiled unconditionally; `naive` — the oracle the tests hold the others to — and `qugiy` are compiled only where something can reach them, under the condition `sliders.rs` states beside them. See the 2026-07-23 entry in [DECISIONS.md](./DECISIONS.md).
 
 ## 4. Benchmarking method
 

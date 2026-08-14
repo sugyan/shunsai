@@ -3,7 +3,7 @@
 
 Workflow (see BENCHMARKS.md):
 
-    cargo bench --features bench-internals
+    cargo bench --features _bench-internals
     python3 scripts/bench_snapshot.py --note "why this run is worth keeping"
 
 Reads every ``target/criterion/**/new/{benchmark,estimates}.json``, writes
@@ -72,7 +72,7 @@ def run(*cmd: str) -> str:
 
 def collect_results() -> dict:
     if not CRITERION_DIR.is_dir():
-        sys.exit(f"error: {CRITERION_DIR} not found — run `cargo bench --features bench-internals` first")
+        sys.exit(f"error: {CRITERION_DIR} not found — run `cargo bench --features _bench-internals` first")
     results = {}
     for benchmark_json in sorted(CRITERION_DIR.rglob("new/benchmark.json")):
         benchmark = json.loads(benchmark_json.read_text())

@@ -1,6 +1,6 @@
 //! Internal attack primitives (the M4 optimization swap boundary) measured
-//! in isolation, via the `bench-internals` feature:
-//! `cargo bench --features bench-internals`.
+//! in isolation, via the `_bench-internals` feature:
+//! `cargo bench --features _bench-internals`.
 //!
 //! Each id sweeps all 81 squares of the three fixed positions with their
 //! real occupancy, so Elements = calls and throughput is calls/sec.
