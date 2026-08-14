@@ -104,8 +104,9 @@ docs: split the design from the decision log
 - **A measured figure belongs in a commit subject.** The ban in the table above is on
   *code comments*, which nothing re-checks; git holds a subject against the tree it
   described, so it stays true.
-- **The prefix does not decide the version.** release-plz runs `cargo-semver-checks`,
-  which reads the compiled API rather than the message and overrides a bump the log
-  disagrees with. So a mistyped prefix costs changelog quality, not a wrong release —
-  and correspondingly, `!` is documentation rather than the thing that protects
-  `rinsai`. Do not rely on it as the guard.
+- ⚠️ **The prefix decides the version, and `cargo-semver-checks` can only raise it.**
+  release-plz takes the bump from the log and asks semver-checks whether the compiled
+  API needs a larger one; it does not lower one the log asked for. So a mistyped prefix
+  ships a wrong version rather than a poor changelog line, and `!` is a guard `rinsai`
+  depends on. What it looks like when that goes wrong is the 2026-08-14 entry in
+  [DECISIONS.md](./DECISIONS.md).
