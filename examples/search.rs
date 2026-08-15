@@ -6,8 +6,8 @@
 //! Perft exercises generation and do/undo, but not the way a search uses them:
 //! it never keeps a key, never cuts off a subtree, and never asks what a move
 //! captures. This example is the standing check that the published surface is
-//! enough to build a search on — it imports `shunsai::Position` and
-//! `shogi_core`, and nothing else. No `bench-internals`, no crate internals.
+//! enough to build a search on — the only `shunsai` item it imports is
+//! `Position`. No `_bench-internals`, no crate internals.
 //! Anything a search needs and cannot get from here is an API gap, which is
 //! worth finding while the surface is still free to change.
 //!

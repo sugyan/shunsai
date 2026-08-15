@@ -39,7 +39,7 @@
 #![deny(missing_docs)]
 
 mod bitboard;
-#[cfg(feature = "bench-internals")]
+#[cfg(feature = "_bench-internals")]
 #[doc(hidden)]
 pub mod internals;
 mod movegen;

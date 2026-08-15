@@ -1,4 +1,4 @@
-//! Crate internals re-exposed for `benches/` (`bench-internals` feature).
+//! Crate internals re-exposed for `benches/` (`_bench-internals` feature).
 //!
 //! Not public API: hidden from docs, no stability guarantees. Wrapper
 //! functions are used because `pub use` of a `pub(crate)` item is not

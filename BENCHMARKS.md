@@ -44,13 +44,13 @@ apery ships no perft at all, so it gets a small driver of our own on `MoveList<L
 ## Running
 
 ```bash
-cargo bench --features bench-internals
+cargo bench --features _bench-internals
 ```
 
 The whole suite is one bench target (`benches/suite/`); without the
 feature, the `internals` group is compiled out and the rest runs.
 
-> ⚠️ **Name the backend a run wants**: `--features bench-internals`, plus
+> ⚠️ **Name the backend a run wants**: `--features _bench-internals`, plus
 > `slider-qugiy` or `slider-naive` deliberately when comparing backends.
 > `--all-features` is not the shortcut it looks like — the two backend flags
 > select the same thing, so enabling both is a `compile_error!` and the crate
@@ -62,11 +62,11 @@ feature, the `internals` group is compiled out and the rest runs.
 Useful variants:
 
 ```bash
-cargo bench --features bench-internals movegen
+cargo bench --features _bench-internals movegen
 ```
 
 ```bash
-cargo bench --features bench-internals -- --save-baseline before
+cargo bench --features _bench-internals -- --save-baseline before
 ```
 
 criterion baselines (`--save-baseline <name>` / `-- --baseline <name>`)
@@ -114,7 +114,7 @@ what a backend-adoption decision reads. Selecting a backend for the
 `perft/*` and `movegen/*` ids needs a rebuild:
 
 ```bash
-cargo bench --features bench-internals,slider-qugiy
+cargo bench --features _bench-internals,slider-qugiy
 ```
 
 The plain `perft/*` and `movegen/*` ids measure the allocating
@@ -220,7 +220,7 @@ Three things are worth doing rather than assuming:
 - **Build before quieting, not after.** Compiling is itself a disturbance,
   and on a machine with an on-access scanner a freshly written binary keeps
   one busy for minutes afterwards. Get everything built
-  (`cargo bench --features bench-internals --no-run`), then let the machine
+  (`cargo bench --features _bench-internals --no-run`), then let the machine
   settle, then measure with nothing left to compile.
 - **Sample the load *during* the run, not before it.** An idle check at the
   start says nothing about the machine while the suite is executing, and a
@@ -273,7 +273,7 @@ regression.
 On a clean, committed tree, and a quiet machine (above):
 
 ```bash
-cargo bench --features bench-internals
+cargo bench --features _bench-internals
 ```
 
 ```bash

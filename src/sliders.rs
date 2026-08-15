@@ -104,9 +104,9 @@ compile_error!("slider-naive and slider-qugiy select the same thing; enable at m
 // one.
 pub(crate) mod magic;
 mod magics;
-#[cfg(any(test, feature = "bench-internals", feature = "slider-naive"))]
+#[cfg(any(test, feature = "_bench-internals", feature = "slider-naive"))]
 pub(crate) mod naive;
-#[cfg(any(test, feature = "bench-internals", feature = "slider-qugiy"))]
+#[cfg(any(test, feature = "_bench-internals", feature = "slider-qugiy"))]
 pub(crate) mod qugiy;
 #[cfg(test)]
 mod tests;
