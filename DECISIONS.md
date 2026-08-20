@@ -329,7 +329,7 @@ Not the surface 2026-08-11's `all-features` bullet is about. That one is what do
 - **`movegen/maxmoves-buf` met neither recordability condition** (σ 15.7 %, 5.7 % across four independent runs), and the history entry's note says so. It is the id 2026-08-11 already named the most layout-volatile here; nothing has explained why it alone behaves this way.
 - **What the six-pass alternating shape bought.** Machine load changed *during* the set, and alternating is what makes that harmless — the change lands on base and head alike. The absolute run recorded separately needed its own quiet window, which is a different requirement from the A/B and was learned the expensive way here.
 
-### 2026-08-20 — the checkout becomes self-contained, and the prose plugin is refused
+### 2026-08-20 — the checkout becomes self-contained, and the prose plugin is refused — ([#39](https://github.com/sugyan/shunsai/pull/39))
 
 Sessions run in the cloud now, where the clone is all there is. The crate was already portable; the setup around it was not, and none of what follows is in the commit that fixed it.
 
