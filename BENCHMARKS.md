@@ -389,4 +389,5 @@ ids are absent: they drift across days, and their `-cb` twins are the tell.
 | 2026-08-07 | 658543b | 335.4 | 216.3 | 2211.6 | 794.1 | 0.07 | 10.8 | check_info's empty-board sniper scan served from ray … |
 | 2026-08-07 | d056511 | 398.6 | 224.4 | 2451.3 | 847.1 | 0.06 | 10.9 | king_danger's slider half filtered by the … |
 | 2026-08-18 | v0.1.2 | 403.1 | 232.6 | 2403.4 | 854.1 | 0.06 | 11.2 | v0.1.2 as released, measured after a stable quiet window. … |
+| 2026-08-20 | v0.1.2-6-ge35956f | 408.5 | 239.0 | 2533.6 | 875.8 | 0.06 | 8.8 | Zobrist keys const-evaluated: do_undo -21.6 % against the … |
 <!-- BENCH_HISTORY_END -->
