@@ -72,13 +72,13 @@ method, the fixtures and where the crate currently stands are in
 
 ## The project's record
 
-- [DESIGN.md](./DESIGN.md) — scope, milestones, and the licensing policy
-- [DECISIONS.md](./DECISIONS.md) — what was decided and rejected, and what is still open
+- [DESIGN.md](./DESIGN.md) — what the crate is, what it is not, and how it is held to that
+- [FAQ.md](./FAQ.md) — why the code is the way it is, and what was rejected
 - [BENCHMARKS.md](./BENCHMARKS.md) — how measurement is done, and every recorded number
 
 ## License
 
 `MIT OR Apache-2.0`, at your option.
 
-No GPL-licensed code is reused; [DESIGN.md](./DESIGN.md) states that policy and the
+No GPL-licensed code is reused; [CLAUDE.md](./CLAUDE.md) states that policy and the
 provenance scan it requires before each release.
