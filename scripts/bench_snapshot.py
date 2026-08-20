@@ -43,27 +43,40 @@ def _us_per_element(r: dict) -> str:
 # Formatters get the per-result dict; missing ids render "-", so an entry
 # recorded before an id existed simply leaves that column blank.
 #
-# The plain ids came first and keep their original headers so the series runs
-# unbroken back to the M2 baseline, but they are the *allocating,
-# materializing* path — neither the one the crate recommends nor the one the
-# cross-engine harness drives. The `-cb` (recommended) and `-mat` / `-buf`
-# (comparable to the other engines) columns sit beside them.
+# Two ids per position, one per leaf convention: `-cb`, the path this crate
+# recommends and the one haitaka's bulk path is comparable to, and `-mat-wi`,
+# the materializing path every other engine in the cross-engine table drives.
+# Never read one against the other (see "Fairness" in BENCHMARKS.md).
+#
+# This is a summary, not the record: `benches/history/*.json` holds every id
+# each run measured, so a column dropped here loses nothing and can be restored
+# by adding it back. What earns a column is being readable for change across
+# rows — which is why the allocating `Vec` ids are absent, BENCHMARKS.md having
+# established that they drift across days and that their `-cb` twins are the
+# tell.
 HEADLINE_COLUMNS = [
-    ("perft startpos-d4 Mnps", "perft/startpos/4", _mnps),
     ("perft startpos-d4 -cb", "perft/startpos-cb/4", _mnps),
-    ("perft startpos-d4 -mat", "perft/startpos-mat/4", _mnps),
     ("perft startpos-d4 -mat-wi", "perft/startpos-mat-wi/4", _mnps),
-    ("perft matsuri-d3 Mnps", "perft/matsuri/3", _mnps),
     ("perft matsuri-d3 -cb", "perft/matsuri-cb/3", _mnps),
-    ("perft matsuri-d3 -mat", "perft/matsuri-mat/3", _mnps),
     ("perft matsuri-d3 -mat-wi", "perft/matsuri-mat-wi/3", _mnps),
-    ("movegen matsuri µs", "movegen/matsuri", lambda r: f"{r['mean_ns'] / 1e3:.2f}"),
-    ("movegen sampled-v1 µs/pos", "movegen/sampled-v1", _us_per_element),
     ("movegen sampled-v1 -cb", "movegen/sampled-v1-cb", _us_per_element),
-    ("movegen sampled-v1 -buf", "movegen/sampled-v1-buf", _us_per_element),
-    ("movegen sampled-v1 -wi", "movegen/sampled-v1-wi", _us_per_element),
     ("do_undo ns/pair", "do_undo/games-v1", lambda r: f"{r['per_element_ns']:.1f}"),
 ]
+
+
+# The table is one line per run, so a note that runs to paragraphs makes the
+# whole thing unreadable. The snapshot keeps the note whole; only this cell is
+# cut. Why a figure is what it is belongs in DECISIONS.md.
+NOTE_CELL_CHARS = 60
+
+
+def _note_cell(note: str) -> str:
+    note = " ".join(note.split()).replace("|", "\\|")
+    if len(note) <= NOTE_CELL_CHARS:
+        return note
+    cut = note[:NOTE_CELL_CHARS]
+    head, sep, _ = cut.rpartition(" ")
+    return (head if sep and len(head) > NOTE_CELL_CHARS // 2 else cut) + " …"
 
 
 def run(*cmd: str) -> str:
@@ -138,6 +151,12 @@ def collect_meta(note: str) -> dict:
         "git": {
             "rev": run("git", "rev-parse", "HEAD"),
             "short_rev": run("git", "rev-parse", "--short", "HEAD"),
+            # Which release this descends from and how far past it, which a
+            # bare sha does not say and which is knowable before the release
+            # that contains it exists. Falls back to the sha on a revision no
+            # tag reaches — `main` takes squash merges, so a branch measured
+            # before it lands is never an ancestor of one.
+            "describe": run("git", "describe", "--tags", "--always", "--dirty"),
             "branch": run("git", "branch", "--show-current"),
             "dirty": dirty,
             # Orders the history table. Several entries a day are normal
@@ -160,11 +179,11 @@ def markdown_table() -> str:
     for path in sorted(HISTORY_DIR.glob("*.json")):
         snapshot = json.loads(path.read_text())
         meta, results = snapshot["meta"], snapshot["results"]
-        cells = [meta["date"], meta["git"]["short_rev"]]
+        cells = [meta["date"], meta["git"].get("describe") or meta["git"]["short_rev"]]
         for _, full_id, fmt in HEADLINE_COLUMNS:
             result = results.get(full_id)
             cells.append(fmt(result) if result else "-")
-        cells.append(meta.get("note", ""))
+        cells.append(_note_cell(meta.get("note", "")))
         # Entries recorded before `committed` existed fall back to the date.
         order = meta["git"].get("committed") or meta["date"]
         rows.append((order, path.name, "| " + " | ".join(cells) + " |"))
