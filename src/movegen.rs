@@ -29,8 +29,9 @@ use crate::bitboard::Bitboard;
 use crate::position::Position;
 use crate::tables;
 
-/// The most legal moves any shogi position has, which is the move count of
-/// the max-moves fixture in DESIGN.md §6.
+/// The most legal moves any shogi position has: the move count of
+/// `R8/2K1S1SSk/4B4/9/9/9/9/9/1L1L1L3 b RBGSNLP3g3n17p 1`, asserted by
+/// `max_moves_position`.
 ///
 /// [`Position::legal_moves`] sizes its `Vec` from this so no caller pays a
 /// growth realloc, which the drop-heavy positions would otherwise pay.
@@ -98,7 +99,7 @@ impl MoveSet {
     /// Deliberately does not `reserve`. `Vec::push` checks capacity per
     /// element either way, so reserving only avoids a reallocation — and this
     /// method is for callers that own a sized buffer, where there is none to
-    /// avoid. Measured and rejected; DECISIONS.md has it.
+    /// avoid. Measured and rejected.
     #[inline]
     pub fn write_into(self, out: &mut Vec<Move>) {
         match self {
@@ -461,7 +462,7 @@ fn generate_king_moves(
 ///
 /// A search wanting the opponent's *full* attack map wants this filter
 /// dropped, which is a one-line change and a different measurement. It is not
-/// dropped speculatively — see DECISIONS.md.
+/// dropped speculatively.
 fn king_danger(position: &Position, us: Color, king: Square, occupied: Bitboard) -> Bitboard {
     let occupied = occupied ^ Bitboard::single(king);
     let rooks = position.piece_kind_bb(PieceKind::Rook)

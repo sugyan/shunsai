@@ -170,7 +170,7 @@ static LANCE_RAYS: [[Bitboard; 81]; 2] = ray_table_both(PAWN_STEPS);
 /// colour, where a two-row table is the better shape. The duplication costs
 /// 40.5 KiB of `.rodata` — the budget any further piece-indexed table is
 /// spent against, and the input to the deferred magic-versus-qugiy re-run
-/// under cache pressure (DECISIONS.md).
+/// under cache pressure.
 static STEP_ATTACKS: [[Bitboard; 81]; 32] = step_attacks_table();
 
 const fn step_attacks_table() -> [[Bitboard; 81]; 32] {
