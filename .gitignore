@@ -1,3 +1,13 @@
 /target
 Cargo.lock
 __pycache__/
+
+# Claude Code checks its scratch worktrees out inside the repo. Project-level
+# settings and hooks under .claude/ stay committed, so a fresh clone gets them;
+# only the worktrees are ignored.
+/.claude/worktrees/
+
+# Personal overrides for this checkout: the SSH key git pushes with, and the
+# sibling directories this machine happens to have. The shared settings are
+# committed.
+/.claude/settings.local.json
