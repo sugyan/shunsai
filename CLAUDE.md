@@ -52,9 +52,40 @@ See "7. Licensing policy" in [DESIGN.md](./DESIGN.md) for the rationale.
 
 Measure perft / movegen / do-undo with `criterion`. Comparison targets are pinned submodules in a **local-only, unpublished sibling repository** (no remote; not visible from this GitHub repo — see its README when working locally). Goal: **beat haitaka / apery_rust**.
 
-⚠️ **Nothing in this repository may point at that checkout.** Not a path in a document, and above all not a script or CI step that needs it to run — it exists on one machine, so such a thing is unrunnable for everyone else and rots unwatched. Apparatus that needs the corpus belongs *in* that repository; this one keeps the result. **This is not a CI step, deliberately**: only a checkout that *has* the corpus can introduce such a path, so the check belongs where that checkout is, not in a job every contributor pays for. A local hook does it on edit.
+⚠️ **Nothing in this repository may point at that checkout.** Not a path in a document, and above all not a script or CI step that needs it to run — it exists on one machine, so such a thing is unrunnable for everyone else and rots unwatched. Apparatus that needs the corpus belongs *in* that repository; this one keeps the result. **This is not a CI step, deliberately**: only a checkout that *has* the corpus can introduce such a path, and an agent is the only actor that plausibly writes one, so a job every contributor pays for buys nothing. [`corpus-path.sh`](./.claude/hooks/corpus-path.sh) does it on edit; `--all` runs the same check by hand.
 
-Method, fixtures, how to quiet the machine, and what makes a run recordable are in [BENCHMARKS.md](./BENCHMARKS.md). Read it before trusting a measurement — this machine's single-shot timings scatter far enough to invent a result.
+Method, fixtures, how to quiet the machine, and what makes a run recordable are in [BENCHMARKS.md](./BENCHMARKS.md). Read it before trusting a measurement — the development machine's single-shot timings scatter far enough to invent a result.
+
+## What runs where
+
+The development machine is an Apple Silicon Mac; sessions also run in the cloud,
+where the checkout is all there is.
+
+**Available anywhere**: `cargo fmt` / `clippy` / `test` / `doc`, the deep perft
+tests (`cargo test --release -- --ignored`), `cargo run --release --example
+gen_magics -- --check`, and `cargo bench --no-run`. What makes these portable is
+that they are **decided by a count, not by a clock** — a perft total is the same
+number on any machine, so it is a valid result from any of them.
+
+**Local only, and a cloud session must not claim otherwise**:
+
+- **Any timing measurement, and any entry in `benches/history/`.** Two reasons,
+  either sufficient: BENCHMARKS.md's recordability rules assume a quiet machine,
+  and every committed entry is Apple Silicon — a row measured on another CPU is
+  not comparable with the series it would be appended to, so adding one corrupts
+  the record rather than extending it. ⚠️ `examples/perft` reports both, and only
+  half of it travels: the node count is deterministic, the nodes/sec is not.
+- **The cross-engine standing.** The harness and the pinned targets are in the
+  local-only benchmarks repository.
+- **The provenance scan** required before publishing, which needs the same GPL
+  corpus.
+- **Reading the sibling `rinsai` or benchmarks checkouts.** `rinsai` depends on
+  *released* versions of this crate, so what it needs from here is a shunsai
+  release, never a look at its tree.
+
+A cloud session that wants one of these asks for it, and says which measurement
+and against what base; it does not estimate one and it does not quote a figure
+from the history as if it had re-run it.
 
 ## Documentation
 

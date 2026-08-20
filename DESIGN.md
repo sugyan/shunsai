@@ -38,7 +38,7 @@ Don't pick Qugiy or SIMD up front. First get a **simple, correct implementation*
 - Correctness is guaranteed by matching the known perft values (see §6).
 
 ### Phase 2: benchmark harness
-- Measure perft / movegen / do-undo with `criterion`. Wire it into the local benchmarks checkout (see §5) and compare side-by-side against the old yasai, haitaka, and apery_rust.
+- Measure perft / movegen / do-undo with `criterion`. The side-by-side comparison against the old yasai, haitaka and apery_rust runs **from** the local-only benchmarks repository (§5), which holds the harness and the pinned targets; this repository keeps the result.
 - Record the naive implementation as the **baseline**.
 
 ### Phase 3: optimization candidates, adopted by benchmark comparison
