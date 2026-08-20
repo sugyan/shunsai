@@ -151,6 +151,12 @@ def collect_meta(note: str) -> dict:
         "git": {
             "rev": run("git", "rev-parse", "HEAD"),
             "short_rev": run("git", "rev-parse", "--short", "HEAD"),
+            # Which release this descends from and how far past it, which a
+            # bare sha does not say and which is knowable before the release
+            # that contains it exists. Falls back to the sha on a revision no
+            # tag reaches — `main` takes squash merges, so a branch measured
+            # before it lands is never an ancestor of one.
+            "describe": run("git", "describe", "--tags", "--always", "--dirty"),
             "branch": run("git", "branch", "--show-current"),
             "dirty": dirty,
             # Orders the history table. Several entries a day are normal
@@ -173,7 +179,7 @@ def markdown_table() -> str:
     for path in sorted(HISTORY_DIR.glob("*.json")):
         snapshot = json.loads(path.read_text())
         meta, results = snapshot["meta"], snapshot["results"]
-        cells = [meta["date"], meta["git"]["short_rev"]]
+        cells = [meta["date"], meta["git"].get("describe") or meta["git"]["short_rev"]]
         for _, full_id, fmt in HEADLINE_COLUMNS:
             result = results.get(full_id)
             cells.append(fmt(result) if result else "-")

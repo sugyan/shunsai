@@ -6,7 +6,8 @@
       "short_rev": "e8fe5ed",
       "branch": "claude/v0-1-2-improvements-575a15",
       "dirty": false,
-      "committed": "2026-08-16T19:15:04+09:00"
+      "committed": "2026-08-16T19:15:04+09:00",
+      "describe": "v0.1.2"
     },
     "rustc": "rustc 1.94.1 (e408947bf 2026-03-25)",
     "criterion": "0.8.2",

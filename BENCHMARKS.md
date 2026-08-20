@@ -388,5 +388,5 @@ ids are absent: they drift across days, and their `-cb` twins are the tell.
 | 2026-08-06 | 2be3a5b | 329.9 | 211.4 | 2210.0 | 828.3 | 0.07 | 10.8 | piece-indexed attacks_of dispatch + per-origin promotion … |
 | 2026-08-07 | 658543b | 335.4 | 216.3 | 2211.6 | 794.1 | 0.07 | 10.8 | check_info's empty-board sniper scan served from ray … |
 | 2026-08-07 | d056511 | 398.6 | 224.4 | 2451.3 | 847.1 | 0.06 | 10.9 | king_danger's slider half filtered by the … |
-| 2026-08-18 | e8fe5ed | 403.1 | 232.6 | 2403.4 | 854.1 | 0.06 | 11.2 | v0.1.2 as released, measured after a stable quiet window. … |
+| 2026-08-18 | v0.1.2 | 403.1 | 232.6 | 2403.4 | 854.1 | 0.06 | 11.2 | v0.1.2 as released, measured after a stable quiet window. … |
 <!-- BENCH_HISTORY_END -->
