@@ -22,8 +22,8 @@ use shogi_core::{Hand, Move, PartialPosition, PieceKind, ToUsi};
 use shogi_usi_parser::FromUsi;
 use shunsai::Position;
 
-/// The most legal moves any shogi position has — the count of the max-moves
-/// position in DESIGN.md §6.
+/// The most legal moves any shogi position has, reached by
+/// `R8/2K1S1SSk/4B4/9/9/9/9/9/1L1L1L3 b RBGSNLP3g3n17p 1`.
 const MAX_LEGAL_MOVES: usize = 593;
 
 /// Beyond any material score, so a mate always outranks a material gain.

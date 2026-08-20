@@ -55,7 +55,8 @@ bench = false
 name = "suite"
 harness = false
 
-# Benchmark conditions from BENCHMARKS.md (applies to examples/tests built here)
+# The profile every recorded measurement is taken under; examples and tests
+# built in release get it too.
 [profile.release]
 lto = "fat"
 codegen-units = 1

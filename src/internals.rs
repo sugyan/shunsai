@@ -2,8 +2,8 @@
 //!
 //! Not public API: hidden from docs, no stability guarantees. Wrapper
 //! functions are used because `pub use` of a `pub(crate)` item is not
-//! allowed (E0365); the wrapped signatures are exactly the M4 optimization
-//! swap boundary (DECISIONS.md) plus the legality-test core.
+//! allowed (E0365); the wrapped signatures are exactly the slider-backend
+//! swap boundary plus the legality-test core.
 
 use shogi_core::{Color, Piece, Square};
 

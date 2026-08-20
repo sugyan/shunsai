@@ -1,7 +1,7 @@
-//! Differential testing against `shogi_legality_lite` (the correctness
-//! oracle from DESIGN.md §6): random playouts from the fixed position set,
-//! asserting set-equality of the full legal-move sets at every node, plus
-//! Zobrist-key consistency between incremental updates and rebuilds.
+//! Differential testing against `shogi_legality_lite`, the correctness oracle:
+//! random playouts from the fixed position set, asserting set-equality of the
+//! full legal-move sets at every node, plus Zobrist-key consistency between
+//! incremental updates and rebuilds.
 
 use shogi_core::{Move, PartialPosition};
 use shogi_usi_parser::FromUsi;

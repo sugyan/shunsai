@@ -1,5 +1,5 @@
-//! Known perft values (DESIGN.md §6). All values assume fully legal
-//! generation including pawn-drop-mate exclusion, with leaf bulk counting.
+//! Known perft values. All assume fully legal generation including
+//! pawn-drop-mate exclusion, with leaf bulk counting.
 
 use shogi_core::PartialPosition;
 use shogi_usi_parser::FromUsi;
@@ -96,7 +96,7 @@ fn max_moves_position() {
 }
 
 /// Depth 3 established 2026-07-23 by consensus of eight independent
-/// implementations (also asserted in yasai's own bench); see DESIGN.md §6.
+/// implementations (also asserted in yasai's own bench).
 /// Depth 4 (9342410965) is confirmed too but takes minutes — not asserted.
 #[test]
 #[ignore = "slow; run with --release -- --ignored"]
@@ -106,7 +106,7 @@ fn max_moves_position_deep() {
 
 /// Matsuri values confirmed 2026-07-23 by cross-perft agreement of nine
 /// independent implementations, matching the expected values hardcoded in
-/// YaneuraOu's own test suite. See DESIGN.md §6 for provenance.
+/// YaneuraOu's own test suite.
 #[test]
 fn matsuri_position() {
     assert_eq!(perft_sfen(MATSURI_SFEN, 1), 207);
