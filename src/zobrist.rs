@@ -107,23 +107,52 @@ mod tests {
     /// Pins the **draw order**, which [`KEYS`] warns is load-bearing: any
     /// distinct keys hash correctly, so renumbering the table breaks nothing
     /// here and silently rebaselines every transposition-table result a
-    /// consumer has recorded. Three witnesses bracket the sequence — the
-    /// first value drawn, the last one drawn into `hand`, and the last one
-    /// drawn at all — so a change to any loop bound or to their order moves
-    /// at least one of them.
+    /// consumer has recorded.
+    ///
+    /// The fold walks every entry in canonical index order and mixes
+    /// order-sensitively, so it reads *which key sits in which slot* rather
+    /// than the set of keys. Endpoints alone cannot do this: the first and
+    /// last values drawn are fixed points of any re-nesting of the loops, so a
+    /// swap that renumbers all 2268 board keys leaves them where they were.
     #[test]
     fn the_draw_order_is_fixed() {
-        let first_square = Square::all().next().unwrap();
-        assert_eq!(first_square.array_index(), 0);
+        const OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+        const PRIME: u64 = 0x0000_0100_0000_01b3;
+
+        let mut digest = OFFSET;
+        let mut folded = 0;
+        let mut mix = |key: u64, folded: &mut u32| {
+            *folded += 1;
+            digest = (digest ^ key).wrapping_mul(PRIME);
+        };
+        for color in Color::all() {
+            for piece_kind in PieceKind::all() {
+                for square in Square::all() {
+                    mix(
+                        board_key(Piece::new(piece_kind, color), square),
+                        &mut folded,
+                    );
+                }
+            }
+        }
+        for color in Color::all() {
+            for piece_kind in shogi_core::Hand::all_hand_pieces() {
+                for count in 1..=MAX_HAND_COUNT as u8 {
+                    mix(hand_key(color, piece_kind, count), &mut folded);
+                }
+            }
+        }
+        mix(side_key(), &mut folded);
+
+        // Every key the table holds is in the fold, so nothing can be
+        // renumbered outside it.
         assert_eq!(
-            board_key(Piece::new(PieceKind::Pawn, Color::Black), first_square),
-            0xa4c4_9cae_2623_a134,
+            folded as usize,
+            Color::NUM * PieceKind::NUM * Square::NUM
+                + Color::NUM * HAND_KINDS * MAX_HAND_COUNT
+                + 1
         );
-        assert_eq!(
-            hand_key(Color::White, PieceKind::Rook, MAX_HAND_COUNT as u8),
-            0x3a35_82c7_4d76_3672,
-        );
-        assert_eq!(side_key(), 0x87bb_ee60_9028_3a29);
+        assert_eq!(digest, 0x89ab_5be2_4ee9_75f4);
     }
 
     #[test]
