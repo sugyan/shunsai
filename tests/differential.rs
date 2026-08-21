@@ -61,9 +61,12 @@ fn playout(start: &PartialPosition, games: u32, max_plies: u32, rng_seed: u64) {
             }
             let mv = moves[splitmix64(&mut state) as usize % moves.len()];
             position.do_move(mv);
-            partial
-                .make_move(mv)
-                .unwrap_or_else(|| panic!("oracle rejected generated move in game {game}"));
+            partial.make_move(mv).unwrap_or_else(|| {
+                panic!(
+                    "oracle rejected {mv:?} at ply {ply} of game {game} in\nsfen {}",
+                    partial.to_sfen_owned()
+                )
+            });
             // The incrementally updated key must match a from-scratch rebuild.
             assert_eq!(
                 position.key(),

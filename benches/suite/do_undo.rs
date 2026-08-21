@@ -18,10 +18,16 @@ fn bench_do_undo(c: &mut Criterion) {
     // per thread, so its reallocation is not what this bench is asking about.
     let mut undos: Vec<Undo> = Vec::with_capacity(longest);
 
-    // Guard: replaying and rewinding each game restores the start position.
+    // Guard: every fixture move is legal where it is played (`do_move`'s
+    // contract — a round-trip alone would also pass on garbage moves), and
+    // replaying then rewinding each game restores the start position.
     let mut position = Position::startpos();
     for game in &games {
         for &mv in game {
+            assert!(
+                position.legal_moves().contains(&mv),
+                "games-v1 plays an illegal move: {mv:?}"
+            );
             undos.push(position.do_move(mv));
         }
         for &mv in game.iter().rev() {
