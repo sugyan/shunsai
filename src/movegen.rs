@@ -84,7 +84,8 @@ impl MoveSet {
         }
     }
 
-    /// Always `false`: generation never yields an empty set.
+    /// Whether the set expands to no moves — never true of a set
+    /// [`Position::generate_moves`] yields.
     #[inline(always)]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
@@ -97,10 +98,8 @@ impl MoveSet {
     /// which [`MoveSetIter`] cannot do. Prefer the iterator for consuming
     /// lazily or stopping early, and this for filling a buffer.
     ///
-    /// Deliberately does not `reserve`. `Vec::push` checks capacity per
-    /// element either way, so reserving only avoids a reallocation — and this
-    /// method is for callers that own a sized buffer, where there is none to
-    /// avoid. Measured and rejected.
+    /// Deliberately does not `reserve` — size the buffer yourself (see
+    /// [`MAX_LEGAL_MOVES`]) if reallocation matters.
     #[inline]
     pub fn write_into(self, out: &mut Vec<Move>) {
         match self {
@@ -248,7 +247,8 @@ impl Position {
         self.generate_moves(|_| ControlFlow::Break(())).is_break()
     }
 
-    /// Whether the side to move is in check.
+    /// Whether the side to move is in check; `false` for a side with no
+    /// king.
     pub fn in_check(&self) -> bool {
         let us = self.side_to_move();
         match self.king_square(us) {

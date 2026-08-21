@@ -162,8 +162,10 @@ there.
 
 ### Why is there no `reserve` before a bulk push?
 
-`write_into`'s own doc states the argument. What is not there: it was in the first version
-and made small-set positions worse, so this is a measured rejection rather than a judgement
+`Vec::push` checks capacity per element either way, so reserving only avoids a
+reallocation — and `write_into` is for callers that own a sized buffer, where there is
+none to avoid. A `reserve` was also in the first version and made small-set positions
+worse, so this is a measured rejection rather than a judgement
 ([`aa44f8b`](https://github.com/sugyan/shunsai/commit/aa44f8b)). Sizing `legal_moves()`'s
 `Vec` to 593 is **not** the same thing — one sizing per *call* removing real reallocations,
 against a per-*set* cost buying nothing.
