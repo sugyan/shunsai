@@ -33,9 +33,10 @@ use crate::tables;
 /// `R8/2K1S1SSk/4B4/9/9/9/9/9/1L1L1L3 b RBGSNLP3g3n17p 1`, asserted by
 /// `max_moves_position`.
 ///
-/// [`Position::legal_moves`] sizes its `Vec` from this so no caller pays a
-/// growth realloc, which the drop-heavy positions would otherwise pay.
-const MAX_LEGAL_MOVES: usize = 593;
+/// An upper bound on the number of legal moves in any position, so a move
+/// buffer sized from it never grows; [`Position::legal_moves`] sizes its own
+/// `Vec` from it.
+pub const MAX_LEGAL_MOVES: usize = 593;
 
 /// A group of legal moves that share an origin, as handed to
 /// [`Position::generate_moves`].
