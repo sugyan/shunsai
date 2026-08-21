@@ -66,7 +66,7 @@ HEADLINE_COLUMNS = [
 
 # The table is one line per run, so a note that runs to paragraphs makes the
 # whole thing unreadable. The snapshot keeps the note whole; only this cell is
-# cut. Why a figure is what it is belongs in DECISIONS.md.
+# cut. Why a figure is what it is belongs in FAQ.md.
 NOTE_CELL_CHARS = 60
 
 

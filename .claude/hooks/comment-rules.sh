@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The mechanically-checkable part of CLAUDE.md's "Documentation" section, on
+# The mechanically-checkable part of CLAUDE.md's "Prose" section, on
 # artifacts only — the three documents are where a measured figure and a
 # section heading legitimately live, so nothing here reads a `.md` file.
 #
@@ -115,12 +115,12 @@ add "narrates history in a code comment (git has it)" \
   "$(scan "$rs" "${comment}.*\b(used to be|used to have|it replaces|what (it|they) replaced|as it stood before|no longer (dispatches|clones|allocates))\b")"
 
 # --- an instruction the code cannot enforce ---------------------------------
-add "leaves an instruction the code cannot enforce (that is DECISIONS.md's job)" \
+add "leaves an instruction the code cannot enforce (that is FAQ.md's job, or an issue's)" \
   "$(scan "$rs" "${comment}.*(without re-measuring|do not add (this|it) back)")"
 
 # --- a document that does not ship, named from something that does ----------
 add "names a repository document from a file that ships inside the published crate, where that document is not — state the fact instead of pointing at it" \
-  "$(scan "$shipped" '(CLAUDE|DESIGN|DECISIONS|BENCHMARKS)\.md')"
+  "$(scan "$shipped" '(CLAUDE|DESIGN|FAQ|BENCHMARKS)\.md')"
 
 # --- a section number -------------------------------------------------------
 # Section numbers move when a document is rewritten and nothing re-reads them.

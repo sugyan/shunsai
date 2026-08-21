@@ -12,9 +12,9 @@ repository = "https://github.com/sugyan/shunsai"
 readme = "README.md"
 keywords = ["shogi", "move-generation", "bitboard", "game", "perft"]
 categories = ["game-development", "algorithms"]
-# The published crate is the library. The project's own record (DESIGN,
-# DECISIONS, BENCHMARKS), the fixtures and the committed measurement history
-# are for people working in the repository, and are the bulk of the tree.
+# The published crate is the library. The project's own record, the fixtures
+# and the committed measurement history are for people working in the
+# repository, and are the bulk of the tree.
 include = [
     "src",
     "README.md",
