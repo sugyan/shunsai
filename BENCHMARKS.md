@@ -104,16 +104,12 @@ is the [history](#history) below. The full suite takes roughly 3–5 minutes.
 | `internals/attackers-to` | the reverse-lookup attacker test behind legality checking | Elements = calls |
 | `internals/{bishop,rook}-attacks-{naive,qugiy,magic}` | the same sweep against each backend individually, in a single run | Elements = calls |
 
-What the variants separate: `-cb` builds no `Move` and allocates only at internal nodes;
-the plain ids build every move *and* allocate per node; `-mat` / `-buf` build every move
-into a buffer the caller already owns. So **`-buf` minus `-cb` is the `MoveSet` → `Move`
-expansion loop, and the plain id minus `-buf` is the allocation.** `-cb-buf` isolates the
-one cost the callback API does not remove — internal-node collection, since `do_move`
-needs `&mut Position` and the listener's borrow blocks it. That difference measures as
-nil; FAQ.md holds the allocation counts that bound it.
-
-The `-mat` ids exist because **the count-only path is the one a search will not use**, and
-because only haitaka is on shunsai's footing in the cross-engine table.
+`benches/suite/movegen.rs` states what each variant isolates. Two things that belong here
+rather than there: `-cb-buf` measures the one cost the callback API does not remove —
+internal-node collection — and that difference measures as **nil**, bounded by an
+allocation count rather than a percentage (FAQ.md). And the `-mat` ids exist because
+**the count-only path is the one a search will not use**, so the committed history has to
+track both conventions.
 
 Perft bench setup asserts the known node counts for **every** driver, so a wrong-depth
 run, a broken movegen, or the drivers disagreeing all fail instead of recording garbage.
@@ -206,11 +202,9 @@ set, and alternating is what makes that harmless, since the change lands on base
 alike. An absolute run needs its own quiet window, which is a different requirement.
 
 ⚠️ **Full separation of two triples is weaker evidence than it looks on an id whose spread
-is of the same order.** `perft/maxmoves-mat/2` looked like a separated +2.07 % regression
-on three readings a side and is not one: at eleven readings the ranges overlap, the id
-being unstable to σ 8.2 % within a pass and 4.3 % across four independent ones. Do not
-read that cell. `movegen/maxmoves-buf` is this crate's most layout-volatile id and behaves
-the same way; nothing has explained why.
+is of the same order** — a separated-looking result on `perft/maxmoves-mat/2` dissolved at
+eleven readings. Do not read that cell, nor `movegen/maxmoves-buf`; both are unstable
+enough that more readings have changed the conclusion, and nothing has explained why.
 
 Two traps this suite has actually sprung:
 
@@ -311,9 +305,8 @@ touch at all have sat ~4 % below their previous figures, which is enough to hide
 gain or invent a small regression. ⚠️ **The two conventions in a row are not comparable to
 each other**: `-cb` counts leaves and `-mat-wi` builds every move.
 
-**This table is a summary; the JSON is the record.** A question the columns cannot answer
-is answered there rather than by widening the table. What earns a column is being readable
-*for change* across rows, which is why the allocating `Vec` ids are absent.
+**This table is a summary; the JSON is the record.** `bench_snapshot.py` states beside
+`HEADLINE_COLUMNS` what earns a column and why the allocating `Vec` ids are absent.
 
 <!-- BENCH_HISTORY_BEGIN -->
 | date | rev | perft startpos-d4 -cb | perft startpos-d4 -mat-wi | perft matsuri-d3 -cb | perft matsuri-d3 -mat-wi | movegen sampled-v1 -cb | do_undo ns/pair | note |
