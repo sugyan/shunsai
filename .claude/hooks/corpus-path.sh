@@ -32,9 +32,10 @@ stop() {
 }
 
 # Both forms that name the corpus: the sibling-relative one used in prose, and
-# an absolute path to it. Plain "benchmarks" is fine — the documents describe
-# the repository constantly, and only a *path* is the problem.
-pattern='\.\./benchmarks|/[A-Za-z0-9._-]+/shogi/benchmarks'
+# an absolute path to it — including the `~` and `$HOME` spellings of one.
+# Plain "benchmarks" is fine — the documents describe the repository
+# constantly, and only a *path* is the problem.
+pattern='\.\./benchmarks|(/[A-Za-z0-9._-]+|~|\$HOME)/shogi/benchmarks'
 
 if [ "$mode" = hook ]; then
   command -v jq >/dev/null 2>&1 || stop "jq is not on PATH, so the payload cannot be read"
