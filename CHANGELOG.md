@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3](https://github.com/sugyan/shunsai/compare/v0.1.2...v0.1.3) - 2026-08-21
+
+### Other
+
+- Consolidate decision and design docs into FAQ.md ([#49](https://github.com/sugyan/shunsai/pull/49))
+- Make the checkout self-contained, so a cloud session can work in it ([#39](https://github.com/sugyan/shunsai/pull/39))
+- Const-evaluate the Zobrist keys, so undo_move's dead XORs can be eliminated (-21.7% on do_undo) ([#37](https://github.com/sugyan/shunsai/pull/37))
+
 ## [0.1.2](https://github.com/sugyan/shunsai/compare/v0.1.1...v0.1.2) - 2026-08-15
 
 ### Internal
