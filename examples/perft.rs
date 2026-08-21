@@ -49,11 +49,10 @@ fn perft(position: &mut Position, depth: u32) -> u64 {
 /// does; `perft` above counts off the destination bitboards and constructs
 /// nothing.
 ///
-/// Both are kept because they answer different questions. Counting without
-/// building moves is what `MoveSet::len()` is for and is the faster path, but
-/// it is a perft-only advantage: a search must have the moves. So this driver
-/// is the one whose numbers are comparable to the other engines', and the
-/// difference between the two is the size of that advantage (BENCHMARKS.md).
+/// Both are kept because they answer different questions: this driver is the
+/// one whose numbers are comparable to the other engines', and the difference
+/// between the two is the size of the count-only advantage (BENCHMARKS.md
+/// owns why the two conventions are not comparable).
 ///
 /// One buffer is threaded through the whole tree, each ply taking a slice off
 /// the end and truncating back on the way out, so the walk allocates nothing

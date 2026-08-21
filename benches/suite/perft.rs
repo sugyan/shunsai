@@ -99,10 +99,9 @@ fn perft_cb_buf(position: &mut Position, depth: u32, buf: &mut Vec<Move>) -> u64
 /// (YaneuraOu counts `MoveList<LEGAL_ALL>(pos).size()`, the apery driver
 /// `MoveList<LegalAll>`, yasai / rshogi / cshogi their legal-move lists).
 ///
-/// This is the id whose numbers are comparable to theirs, and the gap to
-/// `-cb` is the size of the advantage `MoveSet::len()` buys on perft and only
-/// on perft: a search must have the moves. Mirrors the `--materialize` driver
-/// in `examples/perft.rs`, which is what the cross-engine harness runs.
+/// This is the id whose numbers are comparable to theirs (BENCHMARKS.md owns
+/// why the two conventions are not). Mirrors the `--materialize` driver in
+/// `examples/perft.rs`, which is what the cross-engine harness runs.
 ///
 /// The buffer is threaded through the whole tree and each ply truncates back
 /// on the way out, so like `perft_cb_buf` the walk allocates nothing — the

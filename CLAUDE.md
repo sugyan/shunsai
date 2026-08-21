@@ -57,7 +57,8 @@ This is a summary of how licensing works, not legal advice.
 - **Everything generated must be fully legal**, pawn-drop-mate (打ち歩詰め) exclusion
   included, so a caller never filters what it is handed.
 - **Known perft values live in [`tests/perft.rs`](./tests/perft.rs)**, which asserts them
-  and records where each came from. Do not restate them elsewhere.
+  and records where each came from. Do not restate them in prose; an executable assertion
+  that pins a bench workload is the one exception.
 - **Beyond fixed values, verify differentially against `shogi_legality_lite`** (MIT, same
   `shogi_core` types): compare full legal-move *sets* on arbitrary positions.
 - **Establish a guard's worth by sabotage.** Break the code, watch which tests fail, and
