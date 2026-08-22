@@ -11,7 +11,6 @@
       "Bash(cargo test:*)",
       "Bash(cargo tree:*)",
       "Bash(cat:*)",
-      "Bash(find:*)",
       "Bash(gh issue:*)",
       "Bash(gh pr:*)",
       "Bash(git blame:*)",
@@ -29,7 +28,6 @@
       "Bash(head:*)",
       "Bash(ls:*)",
       "Bash(rg:*)",
-      "Bash(sed:*)",
       "Bash(tail:*)",
       "Bash(wc:*)"
     ]

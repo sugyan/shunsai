@@ -2,20 +2,16 @@
 
 use shogi_core::{Color, Move, PartialPosition, Piece};
 use shogi_usi_parser::FromUsi;
-use shunsai::Position;
+use shunsai::{MAX_LEGAL_MOVES, Position};
 
 pub const MATSURI_SFEN: &str =
     "l6nl/5+P1gk/2np1S3/p1p4Pp/3P2Sp1/1PPb2P1P/P5GS1/R8/LN4bKL w GR5pnsg 1";
 pub const MAX_MOVES_SFEN: &str = "R8/2K1S1SSk/4B4/9/9/9/9/9/1L1L1L3 b RBGSNLP3g3n17p 1";
 
-/// The most legal moves any shogi position has — the count of
-/// [`MAX_MOVES_SFEN`], which is why that position is in the fixture set.
-///
-/// Buffers are sized from this so no measured closure ever grows one, which
-/// would land in the numbers as generation cost.
-pub const MAX_LEGAL_MOVES: usize = 593;
-
 /// Capacity for the single-position move buffer the `movegen/*-buf` ids own.
+///
+/// Sized from [`MAX_LEGAL_MOVES`] so no measured closure ever grows a
+/// buffer, which would land in the numbers as generation cost.
 pub const MOVE_BUF_CAPACITY: usize = MAX_LEGAL_MOVES;
 
 /// Capacity for one buffer threaded through a whole `perft` tree.

@@ -162,8 +162,10 @@ there.
 
 ### Why is there no `reserve` before a bulk push?
 
-`write_into`'s own doc states the argument. What is not there: it was in the first version
-and made small-set positions worse, so this is a measured rejection rather than a judgement
+`Vec::push` checks capacity per element either way, so reserving only avoids a
+reallocation — and `write_into` is for callers that own a sized buffer, where there is
+none to avoid. A `reserve` was also in the first version and made small-set positions
+worse, so this is a measured rejection rather than a judgement
 ([`aa44f8b`](https://github.com/sugyan/shunsai/commit/aa44f8b)). Sizing `legal_moves()`'s
 `Vec` to 593 is **not** the same thing — one sizing per *call* removing real reallocations,
 against a per-*set* cost buying nothing.
@@ -237,7 +239,10 @@ its own measurement.
 value reaches it; the deep one that does is `#[ignore]`d, and `main`'s ruleset does not
 require the `perft-deep` job, so that step can go red without stopping a merge. What still
 blocks is `rules::pawn_drop_mate_is_excluded` and the differential oracle, both inside
-`check`.
+`check`. And the oracle is stricter than the rule: `shogi_legality_lite` 0.1 rejects
+*every* pawn drop that leaves the opponent without a legal move, check or not, so a
+playout reaching such a position fails the differential with shunsai matching the
+standard rule — the fix is a fixture or seed change, not a change here.
 
 ### Why does `do_move` return an `Undo`?
 
@@ -250,11 +255,6 @@ stack, so unwinding past the bottom announced itself; passing the wrong `Undo` i
 unless it happens to trip `remove_from_hand`'s `hand underflow`. `do_move` is deliberately
 not `#[must_use]` — replaying a game forward is a first-class use — so nothing catches a
 dropped one either.
-
-⚠️ **`movegen/maxmoves-buf` is this crate's most layout-volatile id.** The single-call
-`movegen/*-buf` ids scatter in *both* directions around changes they cannot mechanically
-reach, while their `perft/*-cb-buf` twins stay flat. A mechanism pushes one way; read those
-ids as layout.
 
 ### Why doesn't `Position` derive `Copy`?
 

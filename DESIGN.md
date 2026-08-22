@@ -50,8 +50,7 @@ disagreement. Provenance that is not in that file:
   engines ([shogi-l](https://groups.google.com/g/shogi-l/c/U7hmtThbk1k),
   [TalkChess "Shogi Perft numbers"](https://www.talkchess.com/forum3/viewtopic.php?t=71550));
   the max-moves values come from
-  [this Qiita article](https://qiita.com/ak11/items/8bd5f2bb0f5b014143c8), also used in
-  yasai's tests.
+  [this Qiita article](https://qiita.com/ak11/items/8bd5f2bb0f5b014143c8).
 - Fairy-Stockfish is excluded from the max-moves consensus by convention: it *generates*
   pawn-drop-mate moves and enforces the rule as a game result, so its counts run high on
   drop-heavy trees.
@@ -62,10 +61,8 @@ testing against [`shogi_legality_lite`](https://github.com/rust-shogi-crates/sho
 rather than counts — plus the in-crate oracle tests, which hold every slider backend to
 `naive`.
 
-> **Perft is a real net, but a coverage-dependent one.** It reports a mistake only where
-> some position in the tree exercises it: a `king_danger` under-report slipped past all
-> three deep values and was caught by the differential alone. What each guard has and has
-> not caught, established by sabotage, is in [FAQ.md](./FAQ.md).
+> What each guard has and has not caught, established by sabotage, is in
+> [FAQ.md](./FAQ.md).
 
 ## How speed is decided
 
@@ -79,9 +76,7 @@ and apery as a reference ceiling. The harness and the pinned checkouts live in a
 Comparison numbers are only meaningful against a recorded pin.
 
 One rule from BENCHMARKS.md constrains design work rather than only measurement: **never
-compare numbers produced under different leaf conventions.** Counting leaves off the
-destination bitboards is a genuine advantage of the callback API, but it is one perft
-collects and a search cannot.
+compare numbers produced under different leaf conventions.**
 
 ## Module layout
 
@@ -97,7 +92,7 @@ over `Bitboard` — see [FAQ.md](./FAQ.md).
   — forking or vendoring the needed types is an acceptable fallback that preserves the
   "swap the dependency" migration story.
 - **Every recorded win over haitaka is on Apple Silicon**, which is the family haitaka
-  was tuned for. The x86-64 re-run is scheduled against `rinsai`'s later phases; state
-  that caveat whenever the result is quoted outside this repository.
+  was tuned for; state that caveat whenever the result is quoted outside this repository.
+  The x86-64 re-run is [#50](https://github.com/sugyan/shunsai/issues/50).
 - **Perft-convention mismatches can fake regressions or wins.** Every cross-library
   number must state the convention used.
