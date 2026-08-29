@@ -85,9 +85,9 @@ is the [history](#history) below. The full suite takes roughly 3–5 minutes.
 
 | id | measures | throughput |
 |---|---|---|
-| `perft/startpos/4` | perft(4) from the initial position, leaf bulk counting | Elements = 719,731 nodes |
-| `perft/matsuri/3` | perft(3) from the matsuri midgame position | Elements = 4,809,015 nodes |
-| `perft/maxmoves/2` | perft(2) from the max-legal-moves position | Elements = 105,677 nodes |
+| `perft/startpos/4` | perft(4) from the initial position, leaf bulk counting | Elements = leaf nodes |
+| `perft/matsuri/3` | perft(3) from the matsuri midgame position | Elements = leaf nodes |
+| `perft/maxmoves/2` | perft(2) from the max-legal-moves position | Elements = leaf nodes |
 | `perft/{startpos,matsuri,maxmoves}-cb/<d>` | the same trees through the callback API | as above |
 | `perft/{startpos,matsuri,maxmoves}-cb-buf/<d>` | the same again, with one buffer reused for the whole tree instead of a `Vec` per internal node | as above |
 | `perft/{startpos,matsuri,maxmoves}-mat/<d>` | the same again, but leaf parents **materialize** every move into that buffer instead of popcounting | as above |
@@ -203,8 +203,10 @@ alike. An absolute run needs its own quiet window, which is a different requirem
 
 ⚠️ **Full separation of two triples is weaker evidence than it looks on an id whose spread
 is of the same order** — a separated-looking result on `perft/maxmoves-mat/2` dissolved at
-eleven readings. Do not read that cell, nor `movegen/maxmoves-buf`; both are unstable
-enough that more readings have changed the conclusion, and nothing has explained why.
+eleven readings. Do not read that cell, nor `movegen/maxmoves-buf`: more readings have
+changed the conclusion on both, and the single-call `movegen/*-buf` ids scatter in both
+directions around changes that cannot mechanically reach them while their
+`perft/*-cb-buf` twins stay flat — code layout, not a mechanism.
 
 Two traps this suite has actually sprung:
 
@@ -245,7 +247,8 @@ criterion. Minimum kept, every cell validated against the known node counts. Sec
 lower is better. **Read the `leaf` column** — count-only and materializing rows are not
 comparable.
 
-**Current, 2026-08-06** (shunsai rev `2be3a5b`, `results/2026-08-06.json`):
+**Current, 2026-08-06** (shunsai as recorded in `benches/history/2026-08-06-2be3a5b.json`,
+harness record `results/2026-08-06.json`):
 
 | engine | leaf | startpos d5 | matsuri d3 | maxmoves d3 |
 |---|---|---|---|---|

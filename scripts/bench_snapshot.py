@@ -31,6 +31,17 @@ BENCHMARKS_MD = REPO / "BENCHMARKS.md"
 MARKER_BEGIN = "<!-- BENCH_HISTORY_BEGIN -->"
 MARKER_END = "<!-- BENCH_HISTORY_END -->"
 
+# BENCHMARKS.md's "What makes a run recordable" sigma bound. The documented
+# exception — agreement across three independent runs on the shortest
+# movegen ids — is what --accept-sigma is for; an entry recorded through it
+# should say so in its note.
+SIGMA_LIMIT = 0.04
+
+# The whole suite runs in minutes, so results an hour apart cannot be one
+# run: without this, a filtered `cargo bench` or a retired id's leftover
+# directory would be recorded under today's date and rev.
+FRESHNESS_WINDOW_SECS = 3600
+
 def _mnps(r: dict) -> str:
     return f"{r['elements_per_sec'] / 1e6:.1f}"
 
@@ -83,13 +94,15 @@ def run(*cmd: str) -> str:
     return subprocess.run(cmd, capture_output=True, text=True, check=True, cwd=REPO).stdout.strip()
 
 
-def collect_results() -> dict:
+def collect_results(accept_stale: bool) -> dict:
     if not CRITERION_DIR.is_dir():
         sys.exit(f"error: {CRITERION_DIR} not found — run `cargo bench --features _bench-internals` first")
     results = {}
+    mtimes = {}
     for benchmark_json in sorted(CRITERION_DIR.rglob("new/benchmark.json")):
         benchmark = json.loads(benchmark_json.read_text())
-        estimates = json.loads((benchmark_json.parent / "estimates.json").read_text())
+        estimates_json = benchmark_json.parent / "estimates.json"
+        estimates = json.loads(estimates_json.read_text())
         entry = {
             "mean_ns": estimates["mean"]["point_estimate"],
             "mean_stderr_ns": estimates["mean"]["standard_error"],
@@ -103,9 +116,35 @@ def collect_results() -> dict:
             entry["per_element_ns"] = entry["mean_ns"] / elements
             entry["elements_per_sec"] = elements / (entry["mean_ns"] * 1e-9)
         results[benchmark["full_id"]] = entry
+        mtimes[benchmark["full_id"]] = estimates_json.stat().st_mtime
     if not results:
         sys.exit(f"error: no results under {CRITERION_DIR}")
+    newest = max(mtimes.values())
+    stale = sorted(fid for fid, t in mtimes.items() if newest - t > FRESHNESS_WINDOW_SECS)
+    if stale and not accept_stale:
+        sys.exit(
+            "error: results older than the newest run — a filtered bench, or a retired "
+            "id's leftover directory:\n  "
+            + "\n  ".join(stale)
+            + "\nre-run the full suite, delete the leftover directories, or pass --accept-stale"
+        )
     return results
+
+
+def check_sigma(results: dict, accept_sigma: bool) -> None:
+    over = {
+        full_id: entry["std_dev_ns"] / entry["mean_ns"]
+        for full_id, entry in results.items()
+        if entry["std_dev_ns"] > SIGMA_LIMIT * entry["mean_ns"]
+    }
+    if over and not accept_sigma:
+        listing = "\n  ".join(f"{full_id}: sigma {ratio:.1%}" for full_id, ratio in sorted(over.items()))
+        sys.exit(
+            "error: over the sigma bound BENCHMARKS.md sets for a recordable run:\n  "
+            + listing
+            + "\npass --accept-sigma only with the three-run agreement the exception "
+            "requires, and say so in --note"
+        )
 
 
 def cpu_model() -> str:
@@ -207,10 +246,28 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--note", default="", help="free-text note shown in the history table")
     parser.add_argument("--force", action="store_true", help="overwrite an existing entry for today+rev")
+    parser.add_argument(
+        "--accept-stale", action="store_true", help="record results older than the newest run"
+    )
+    parser.add_argument(
+        "--accept-sigma",
+        action="store_true",
+        help="record ids over the sigma bound (three-run-agreement exception)",
+    )
     args = parser.parse_args()
 
+    # Every committed entry is Apple Silicon, and CLAUDE.md rules a row from
+    # any other CPU out of the series entirely — so there is no flag for this.
+    if platform.system() != "Darwin" or platform.machine() != "arm64":
+        sys.exit(
+            f"error: this machine is {platform.system()}/{platform.machine()} — the "
+            "committed history is an Apple Silicon series, and a row from another CPU "
+            "corrupts it rather than extending it"
+        )
+
     meta = collect_meta(args.note)
-    results = collect_results()
+    results = collect_results(args.accept_stale)
+    check_sigma(results, args.accept_sigma)
     snapshot = {"meta": meta, "results": results}
 
     HISTORY_DIR.mkdir(parents=True, exist_ok=True)

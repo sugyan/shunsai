@@ -6,8 +6,8 @@
 //! Perft exercises generation and do/undo, but not the way a search uses them:
 //! it never keeps a key, never cuts off a subtree, and never asks what a move
 //! captures. This example is the standing check that the published surface is
-//! enough to build a search on — the only `shunsai` item it imports is
-//! `Position`. No `_bench-internals`, no crate internals.
+//! enough to build a search on — it imports only `Position` and
+//! `MAX_LEGAL_MOVES` from `shunsai`. No `_bench-internals`, no crate internals.
 //! Anything a search needs and cannot get from here is an API gap, which is
 //! worth finding while the surface is still free to change.
 //!
@@ -20,11 +20,7 @@ use std::time::Instant;
 
 use shogi_core::{Hand, Move, PartialPosition, PieceKind, ToUsi};
 use shogi_usi_parser::FromUsi;
-use shunsai::Position;
-
-/// The most legal moves any shogi position has, reached by
-/// `R8/2K1S1SSk/4B4/9/9/9/9/9/1L1L1L3 b RBGSNLP3g3n17p 1`.
-const MAX_LEGAL_MOVES: usize = 593;
+use shunsai::{MAX_LEGAL_MOVES, Position};
 
 /// Beyond any material score, so a mate always outranks a material gain.
 const MATE: i32 = 1 << 20;

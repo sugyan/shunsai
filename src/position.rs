@@ -112,6 +112,9 @@ impl Position {
     }
 
     /// The Zobrist key (board, hands and side to move).
+    ///
+    /// The mapping from position to key is stable across releases, so keys
+    /// may be stored and compared across versions of this crate.
     #[inline(always)]
     pub fn key(&self) -> u64 {
         self.key
@@ -140,6 +143,9 @@ impl Position {
     /// Returns what [`Position::undo_move`] needs to take it back. Moves are
     /// undone in the reverse of the order they were made, each with its own
     /// [`Undo`].
+    ///
+    /// ⚠️ An illegal `mv` is not checked in release builds and corrupts the
+    /// position silently.
     pub fn do_move(&mut self, mv: Move) -> Undo {
         let side = self.side_to_move;
         let captured = match mv {
@@ -183,6 +189,9 @@ impl Position {
 
     /// Undoes `mv`, the last move made with [`Position::do_move`], using the
     /// [`Undo`] that call returned.
+    ///
+    /// ⚠️ A mismatched `mv`/[`Undo`] pair is not checked in release builds
+    /// and corrupts the position silently.
     pub fn undo_move(&mut self, mv: Move, undo: Undo) {
         let side = self.side_to_move.flip();
         match mv {

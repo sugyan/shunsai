@@ -15,14 +15,17 @@ fn pawn_drop(to: Square) -> Move {
     }
 }
 
-/// White king on 1a, black gold on 3b covering 2a/2b, black lance on 1e
+/// White king on 1a, black gold on 3b covering 2a/2b, black knight on 2d
 /// defending 1b: P*1b would be checkmate, so it must not be generated.
+/// A knight defends rather than a lance so that nothing bears on 1a itself,
+/// which would put the fixture in the en-prise regime `generate_moves`
+/// leaves unspecified.
 #[test]
 fn pawn_drop_mate_is_excluded() {
     let mut partial = PartialPosition::empty();
     partial.piece_set(sq(1, 1), Some(Piece::new(PieceKind::King, Color::White)));
     partial.piece_set(sq(3, 2), Some(Piece::new(PieceKind::Gold, Color::Black)));
-    partial.piece_set(sq(1, 5), Some(Piece::new(PieceKind::Lance, Color::Black)));
+    partial.piece_set(sq(2, 4), Some(Piece::new(PieceKind::Knight, Color::Black)));
     let hand = partial.hand_of_a_player_mut(Color::Black);
     *hand = hand.added(PieceKind::Pawn).unwrap();
     let position = Position::new(partial);
@@ -36,7 +39,7 @@ fn pawn_drop_mate_is_excluded() {
     assert!(moves.contains(&pawn_drop(sq(1, 3))));
 }
 
-/// Same position without the lance: the king can just capture the pawn,
+/// Same position without the knight: the king can just capture the pawn,
 /// so P*1b is a legal (non-mating) check.
 #[test]
 fn pawn_drop_check_without_mate_is_legal() {
@@ -74,14 +77,15 @@ fn nifu_is_excluded() {
     assert!(moves.contains(&pawn_drop(sq(3, 4))));
 }
 
-/// Pawns, lances and knights may not be dropped (or left unpromoted) where
-/// they could never move again.
+/// Pawns, lances and knights may not be dropped where they could never move
+/// again.
 #[test]
 fn dead_piece_squares_are_excluded() {
     let sfen = "9/9/9/9/9/9/9/9/K7k b PLN 1";
     let partial = PartialPosition::from_usi(&format!("sfen {sfen}")).unwrap();
     let position = Position::new(partial);
-    for mv in position.legal_moves() {
+    let moves = position.legal_moves();
+    for &mv in &moves {
         if let Move::Drop { piece, to } = mv {
             let min_rank = match piece.piece_kind() {
                 PieceKind::Pawn | PieceKind::Lance => 2,
@@ -91,6 +95,16 @@ fn dead_piece_squares_are_excluded() {
             assert!(to.rank() >= min_rank, "dead drop generated: {mv:?}");
         }
     }
+    // The same boundary from the legal side. Without these the loop above
+    // passes vacuously on an empty move list, and a dead zone one rank too
+    // wide would go unnoticed.
+    let drop = |piece_kind, to| Move::Drop {
+        piece: Piece::new(piece_kind, Color::Black),
+        to,
+    };
+    assert!(moves.contains(&drop(PieceKind::Pawn, sq(5, 2))));
+    assert!(moves.contains(&drop(PieceKind::Lance, sq(5, 2))));
+    assert!(moves.contains(&drop(PieceKind::Knight, sq(5, 3))));
 }
 
 /// A position where the opponent's king is en prise cannot occur in legal
@@ -135,29 +149,37 @@ fn pinned_piece_moves_are_restricted() {
 /// would still expose the king to the piece pinning it.
 #[test]
 fn pinned_piece_cannot_capture_a_different_checker() {
-    // Black king 5i pinned down file 5 by a white lance on 5a through the
-    // black gold on 5e; a white knight on 4g gives check from the side.
-    // G-4g would capture the checker but abandons the file.
+    // Black king 5i behind the black gold 5h, pinned down file 5 by a white
+    // lance on 5a; a white silver on 4h gives check. Gx4h captures the
+    // checker but abandons the file.
     let mut partial = PartialPosition::empty();
     partial.piece_set(sq(5, 9), Some(Piece::new(PieceKind::King, Color::Black)));
-    partial.piece_set(sq(5, 5), Some(Piece::new(PieceKind::Gold, Color::Black)));
+    partial.piece_set(sq(5, 8), Some(Piece::new(PieceKind::Gold, Color::Black)));
     partial.piece_set(sq(5, 1), Some(Piece::new(PieceKind::Lance, Color::White)));
-    partial.piece_set(sq(4, 7), Some(Piece::new(PieceKind::Knight, Color::White)));
+    partial.piece_set(sq(4, 8), Some(Piece::new(PieceKind::Silver, Color::White)));
     partial.piece_set(sq(1, 1), Some(Piece::new(PieceKind::King, Color::White)));
-    let position = Position::new(partial);
+    let capture = Move::Normal {
+        from: sq(5, 8),
+        to: sq(4, 8),
+        promote: false,
+    };
+    // The gold really reaches the checker: with the pinning lance removed,
+    // the same capture is generated. Without this, a fixture whose checker
+    // sits outside the gold's reach would leave the assertion below passing
+    // with pin legality disabled entirely.
+    let mut unpinned = partial.clone();
+    unpinned.piece_set(sq(5, 1), None);
     assert!(
-        position.in_check(),
-        "knight on 4g must check the king on 5i"
+        Position::new(unpinned).legal_moves().contains(&capture),
+        "the gold must be able to capture the silver once unpinned"
     );
 
-    for mv in position.legal_moves() {
-        if let Move::Normal { from, to, .. } = mv {
-            assert!(
-                !(from == sq(5, 5) && to == sq(4, 7)),
-                "pinned gold captured the checker and exposed its king"
-            );
-        }
-    }
+    let position = Position::new(partial);
+    assert!(position.in_check(), "the silver on 4h must check the king");
+    assert!(
+        !position.legal_moves().contains(&capture),
+        "pinned gold captured the checker and exposed its king"
+    );
 }
 
 /// The king must not step backwards along a checking ray: the square behind
