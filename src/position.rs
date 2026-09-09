@@ -527,4 +527,33 @@ mod tests {
         assert_eq!(position.key(), rebuilt.key());
         assert_eq!(position, rebuilt);
     }
+
+    /// Pins the position-to-key **composition**, which nothing else does.
+    /// `the_draw_order_is_fixed` pins the table; every other key test here
+    /// compares two paths that share both the table and the composition, so
+    /// a consistent change to either passes all of them.
+    ///
+    /// The second fixture is what reaches the White-to-move term and the
+    /// `1..=count` hand prefix. `startpos` has neither.
+    #[test]
+    fn startpos_key_is_stable() {
+        assert_eq!(Position::startpos().key(), 0xb360_d0a3_3ad0_e6a7);
+
+        let with_hands = Position::new(
+            <PartialPosition as shogi_usi_parser::FromUsi>::from_usi(
+                "sfen 4k4/9/9/9/9/9/9/9/4K4 w 3P2g 1",
+            )
+            .unwrap(),
+        );
+        assert_eq!(with_hands.side_to_move(), Color::White);
+        assert_eq!(
+            with_hands.hand(Color::Black).count(PieceKind::Pawn),
+            Some(3)
+        );
+        assert_eq!(
+            with_hands.hand(Color::White).count(PieceKind::Gold),
+            Some(2)
+        );
+        assert_eq!(with_hands.key(), 0x385d_164d_f479_e4a3);
+    }
 }
