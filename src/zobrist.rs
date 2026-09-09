@@ -97,6 +97,39 @@ pub(crate) fn side_key() -> u64 {
 mod tests {
     use super::*;
 
+    /// FNV-1a over `keys` in the order given. The multiply after each XOR is
+    /// what makes the digest read *which key sits in which slot* rather than
+    /// the set of keys.
+    fn fold(keys: &[u64]) -> u64 {
+        const OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+        const PRIME: u64 = 0x0000_0100_0000_01b3;
+
+        keys.iter()
+            .fold(OFFSET, |digest, key| (digest ^ key).wrapping_mul(PRIME))
+    }
+
+    /// Every key the table holds for hands up to `max_hand_count`, in
+    /// canonical index order.
+    fn walk(max_hand_count: u8) -> Vec<u64> {
+        let mut keys = Vec::new();
+        for color in Color::all() {
+            for piece_kind in PieceKind::all() {
+                for square in Square::all() {
+                    keys.push(board_key(Piece::new(piece_kind, color), square));
+                }
+            }
+        }
+        for color in Color::all() {
+            for piece_kind in shogi_core::Hand::all_hand_pieces() {
+                for count in 1..=max_hand_count {
+                    keys.push(hand_key(color, piece_kind, count));
+                }
+            }
+        }
+        keys.push(side_key());
+        keys
+    }
+
     #[test]
     fn deterministic() {
         let piece = Piece::new(PieceKind::Pawn, Color::Black);
@@ -116,43 +149,28 @@ mod tests {
     /// swap that renumbers all 2268 board keys leaves them where they were.
     #[test]
     fn the_draw_order_is_fixed() {
-        const OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
-        const PRIME: u64 = 0x0000_0100_0000_01b3;
-
-        let mut digest = OFFSET;
-        let mut folded = 0;
-        let mut mix = |key: u64, folded: &mut u32| {
-            *folded += 1;
-            digest = (digest ^ key).wrapping_mul(PRIME);
-        };
-        for color in Color::all() {
-            for piece_kind in PieceKind::all() {
-                for square in Square::all() {
-                    mix(
-                        board_key(Piece::new(piece_kind, color), square),
-                        &mut folded,
-                    );
-                }
-            }
-        }
-        for color in Color::all() {
-            for piece_kind in shogi_core::Hand::all_hand_pieces() {
-                for count in 1..=MAX_HAND_COUNT as u8 {
-                    mix(hand_key(color, piece_kind, count), &mut folded);
-                }
-            }
-        }
-        mix(side_key(), &mut folded);
-
+        let keys = walk(MAX_HAND_COUNT as u8);
         // Every key the table holds is in the fold, so nothing can be
         // renumbered outside it.
         assert_eq!(
-            folded as usize,
+            keys.len(),
             Color::NUM * PieceKind::NUM * Square::NUM
                 + Color::NUM * HAND_KINDS * MAX_HAND_COUNT
                 + 1
         );
-        assert_eq!(digest, 0x89ab_5be2_4ee9_75f4);
+        assert_eq!(fold(&keys), 0x89ab_5be2_4ee9_75f4);
+    }
+
+    /// Pins the keys that have already shipped, and nothing else. Its bound
+    /// and its count are literals rather than [`MAX_HAND_COUNT`] because it
+    /// states what a released version put in a consumer's transposition
+    /// table, not what the table currently holds — the two part company the
+    /// moment the table grows, and only this digest may never move.
+    #[test]
+    fn the_published_keys_have_not_moved() {
+        let keys = walk(18);
+        assert_eq!(keys.len(), 2521);
+        assert_eq!(fold(&keys), 0x89ab_5be2_4ee9_75f4);
     }
 
     #[test]
