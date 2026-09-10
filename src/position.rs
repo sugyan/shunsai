@@ -277,7 +277,7 @@ impl Position {
 
     fn add_to_hand(&mut self, color: Color, piece_kind: PieceKind) {
         let hand = &mut self.hands[color.array_index()];
-        *hand = hand.added(piece_kind).expect("hand overflow");
+        *hand = hand.added(piece_kind).expect("not a hand piece");
         let count = hand.count(piece_kind).expect("not a hand piece");
         self.key ^= zobrist::hand_key(color, piece_kind, count);
     }
@@ -639,5 +639,23 @@ mod tests {
 
         position.undo_move(capture, undo);
         assert_eq!(position, Position::new(partial));
+    }
+
+    /// The one condition `add_to_hand`'s `expect` can report: a captured king,
+    /// which `unpromote` leaves a king. Nothing generates that move, so
+    /// reaching it takes the misuse `do_move` documents.
+    #[test]
+    #[should_panic(expected = "not a hand piece")]
+    fn capturing_a_king_names_the_condition() {
+        let mut partial = PartialPosition::empty();
+        partial.piece_set(
+            Square::new(5, 4).unwrap(),
+            Some(Piece::new(PieceKind::King, Color::White)),
+        );
+        partial.piece_set(
+            Square::new(5, 5).unwrap(),
+            Some(Piece::new(PieceKind::Rook, Color::Black)),
+        );
+        Position::new(partial).do_move(mv((5, 5), (5, 4), false));
     }
 }
