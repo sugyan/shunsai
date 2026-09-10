@@ -42,6 +42,11 @@ pub struct Position {
 
 impl Position {
     /// Builds a [`Position`] from a [`PartialPosition`].
+    ///
+    /// ⚠️ For each hand piece kind, both hands and the board together — a
+    /// promoted piece counting as the kind it demotes to — must hold at most
+    /// 255 of it. Past that a capture wraps [`Hand`]'s count to zero, and the
+    /// hand and the key are corrupted silently in release builds.
     pub fn new(partial: PartialPosition) -> Self {
         let hands = [
             partial.hand_of_a_player(Color::Black),
@@ -555,5 +560,84 @@ mod tests {
             Some(2)
         );
         assert_eq!(with_hands.key(), 0x385d_164d_f479_e4a3);
+    }
+
+    /// Issue #56's first reachability path: a hand deeper than a standard set
+    /// can fill was a release-mode index out of bounds in the seeding loop.
+    /// The key is asserted rather than only the absence of a panic, so a
+    /// seeding loop that stopped short would still fail.
+    #[test]
+    fn a_hand_above_the_published_count_constructs_and_hashes() {
+        let mut partial = PartialPosition::empty();
+        partial.piece_set(
+            Square::new(5, 1).unwrap(),
+            Some(Piece::new(PieceKind::King, Color::White)),
+        );
+        partial.piece_set(
+            Square::new(5, 9).unwrap(),
+            Some(Piece::new(PieceKind::King, Color::Black)),
+        );
+        let hand = partial.hand_of_a_player_mut(Color::Black);
+        for _ in 0..19 {
+            *hand = hand.added(PieceKind::Pawn).unwrap();
+        }
+
+        let position = Position::new(partial);
+        let pawns = position.hand(Color::Black).count(PieceKind::Pawn).unwrap();
+        assert_eq!(pawns, 19);
+        assert!(usize::from(pawns) > zobrist::PUBLISHED_HAND_COUNT);
+        assert_eq!(position.key(), 0x4a5e_f33a_a5c6_ea18);
+    }
+
+    /// Issue #56's second path, and the one that reached a search: a hand at
+    /// the standard set's limit with one more of that kind still on the
+    /// board. Nothing is malformed, so the position constructs and hashes,
+    /// and the capture that crosses the limit is one this crate itself hands
+    /// the caller.
+    #[test]
+    fn a_capture_past_the_published_count_keeps_the_key_a_function_of_the_position() {
+        let mut partial = PartialPosition::empty();
+        for (file, rank, piece_kind, color) in [
+            (5, 1, PieceKind::King, Color::White),
+            (5, 4, PieceKind::Pawn, Color::White),
+            (5, 5, PieceKind::Rook, Color::Black),
+            (5, 9, PieceKind::King, Color::Black),
+        ] {
+            partial.piece_set(
+                Square::new(file, rank).unwrap(),
+                Some(Piece::new(piece_kind, color)),
+            );
+        }
+        let hand = partial.hand_of_a_player_mut(Color::Black);
+        for _ in 0..18 {
+            *hand = hand.added(PieceKind::Pawn).unwrap();
+        }
+
+        let mut position = Position::new(partial.clone());
+        assert_eq!(
+            position.hand(Color::Black).count(PieceKind::Pawn),
+            Some(zobrist::PUBLISHED_HAND_COUNT as u8)
+        );
+
+        let capture = mv((5, 5), (5, 4), false);
+        assert!(position.legal_moves().contains(&capture));
+
+        let undo = position.do_move(capture);
+        assert_eq!(
+            undo.captured,
+            Some(Piece::new(PieceKind::Pawn, Color::White))
+        );
+        let pawns = position.hand(Color::Black).count(PieceKind::Pawn).unwrap();
+        assert_eq!(pawns, 19);
+        assert!(usize::from(pawns) > zobrist::PUBLISHED_HAND_COUNT);
+
+        // The incremental key must still be the key of the position, not just
+        // a value that did not panic.
+        let mut after = partial.clone();
+        after.make_move(capture).unwrap();
+        assert_eq!(position, Position::new(after));
+
+        position.undo_move(capture, undo);
+        assert_eq!(position, Position::new(partial));
     }
 }

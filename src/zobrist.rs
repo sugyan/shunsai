@@ -6,8 +6,12 @@
 
 use shogi_core::{Color, Piece, PieceKind, Square};
 
-/// Maximum count of one piece kind in one hand (18 pawns).
-const MAX_HAND_COUNT: usize = 18;
+/// The largest count a [`Hand`](shogi_core::Hand) can hold, so [`hand_key`]
+/// is total over every hand a position can express.
+const MAX_HAND_COUNT: usize = u8::MAX as usize;
+/// The largest count drawn before [`KEYS`]'s `side`, and the most of one kind
+/// a standard set can put in one hand (18 pawns).
+pub(crate) const PUBLISHED_HAND_COUNT: usize = 18;
 /// Piece kinds that can be held in hand (pawn..rook).
 const HAND_KINDS: usize = 7;
 
@@ -30,8 +34,8 @@ const fn splitmix64(state: &mut u64) -> u64 {
     z ^ (z >> 31)
 }
 
-/// ⚠️ The draw order below fixes every key. Reordering the loops, or drawing
-/// one extra value, renumbers the whole table — which is invisible here (any
+/// ⚠️ The draw order below fixes every key: a value reordered or inserted
+/// anywhere renumbers everything drawn after it — which is invisible here (any
 /// distinct keys hash correctly) and rebaselines every transposition-table
 /// result a consumer has recorded.
 static KEYS: Keys = keys();
@@ -63,7 +67,7 @@ const fn keys() -> Keys {
         while piece_kind < HAND_KINDS {
             // Entry 0 stays zero: an empty hand contributes nothing.
             let mut count = 1;
-            while count <= MAX_HAND_COUNT {
+            while count <= PUBLISHED_HAND_COUNT {
                 keys.hand[color][piece_kind][count] = splitmix64(&mut state);
                 count += 1;
             }
@@ -72,6 +76,22 @@ const fn keys() -> Keys {
         color += 1;
     }
     keys.side = splitmix64(&mut state);
+    // Counts a standard set cannot reach are drawn here, after `side`, so
+    // every key above holds the value it published. Merging this loop into
+    // the one before `side` renumbers all of them.
+    let mut color = 0;
+    while color < Color::NUM {
+        let mut piece_kind = 0;
+        while piece_kind < HAND_KINDS {
+            let mut count = PUBLISHED_HAND_COUNT + 1;
+            while count <= MAX_HAND_COUNT {
+                keys.hand[color][piece_kind][count] = splitmix64(&mut state);
+                count += 1;
+            }
+            piece_kind += 1;
+        }
+        color += 1;
+    }
     keys
 }
 
@@ -82,9 +102,14 @@ pub(crate) fn board_key(piece: Piece, square: Square) -> u64 {
 }
 
 /// The key toggled when `color`'s hand goes between `count - 1` and `count`
-/// pieces of `piece_kind` (`count` >= 1).
+/// pieces of `piece_kind`.
+///
+/// Every count a hand can hold has one, so a count past what a standard set
+/// can reach is unreachable in a legal position rather than out of range.
+/// ⚠️ `count` 0 is not a key: an empty hand contributes nothing, so the slot
+/// it would read is the one entry never drawn.
 pub(crate) fn hand_key(color: Color, piece_kind: PieceKind, count: u8) -> u64 {
-    debug_assert!(matches!(count, 1..=18));
+    debug_assert!(count > 0);
     KEYS.hand[color.array_index()][piece_kind.array_index()][count as usize]
 }
 
@@ -147,6 +172,9 @@ mod tests {
     /// than the set of keys. Endpoints alone cannot do this: the first and
     /// last values drawn are fixed points of any re-nesting of the loops, so a
     /// swap that renumbers all 2268 board keys leaves them where they were.
+    ///
+    /// This is the digest that legitimately moves whenever the table grows;
+    /// `the_published_keys_have_not_moved` is the one that may not.
     #[test]
     fn the_draw_order_is_fixed() {
         let keys = walk(MAX_HAND_COUNT as u8);
@@ -158,7 +186,7 @@ mod tests {
                 + Color::NUM * HAND_KINDS * MAX_HAND_COUNT
                 + 1
         );
-        assert_eq!(fold(&keys), 0x89ab_5be2_4ee9_75f4);
+        assert_eq!(fold(&keys), 0x9e63_d5cb_7480_11d4);
     }
 
     /// Pins the keys that have already shipped, and nothing else. Its bound
@@ -184,12 +212,20 @@ mod tests {
         }
         for color in Color::all() {
             for piece_kind in shogi_core::Hand::all_hand_pieces() {
-                for count in 1..=18 {
+                for count in 1..=MAX_HAND_COUNT as u8 {
                     assert!(seen.insert(hand_key(color, piece_kind, count)));
                 }
             }
         }
         assert!(seen.insert(side_key()));
+        // Narrowing either walk above would drop keys from the set with every
+        // insert still succeeding.
+        assert_eq!(
+            seen.len(),
+            Color::NUM * PieceKind::NUM * Square::NUM
+                + Color::NUM * HAND_KINDS * MAX_HAND_COUNT
+                + 1
+        );
         assert!(!seen.contains(&0));
     }
 }
