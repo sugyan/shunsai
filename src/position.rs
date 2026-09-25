@@ -551,13 +551,11 @@ mod tests {
         assert_eq!(position, rebuilt);
     }
 
-    /// Pins the position-to-key **composition**, which nothing else does.
-    /// `the_draw_order_is_fixed` pins the table; every other key test here
-    /// compares two paths that share both the table and the composition, so
-    /// a consistent change to either passes all of them.
-    ///
-    /// The second fixture is what reaches the White-to-move term and the
-    /// `1..=count` hand prefix. `startpos` has neither.
+    /// Pins the position-to-key **composition** where no other absolute key
+    /// reaches it: pieces other than kings on the board, the White-to-move
+    /// term, and White's hand. `the_draw_order_is_fixed` pins the table, and
+    /// the rebuild comparisons share both table and composition with what
+    /// they compare against, so a consistent change passes them all.
     #[test]
     fn startpos_key_is_stable() {
         assert_eq!(Position::startpos().key(), 0xb360_d0a3_3ad0_e6a7);
@@ -706,8 +704,7 @@ mod tests {
     }
 
     /// The one condition `add_to_hand`'s `expect` can report: a captured king,
-    /// which `unpromote` leaves a king. Nothing generates that move, so
-    /// reaching it takes the misuse `do_move` documents.
+    /// which `unpromote` leaves a king.
     #[test]
     #[should_panic(expected = "not a hand piece")]
     fn capturing_a_king_names_the_condition() {

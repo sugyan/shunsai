@@ -37,10 +37,9 @@ const fn splitmix64(state: &mut u64) -> u64 {
     z ^ (z >> 31)
 }
 
-/// ⚠️ The draw order below fixes every key: a value reordered or inserted
-/// anywhere renumbers everything drawn after it — which is invisible here (any
+/// ⚠️ The draw order below fixes every key. Changing it is invisible here (any
 /// distinct keys hash correctly) and rebaselines every transposition-table
-/// result a consumer has recorded.
+/// result a consumer has recorded; `the_draw_order_is_fixed` pins it.
 static KEYS: Keys = keys();
 
 const fn keys() -> Keys {
@@ -126,9 +125,10 @@ pub(crate) fn side_key() -> u64 {
 mod tests {
     use super::*;
 
-    /// FNV-1a over `keys` in the order given. The multiply after each XOR is
-    /// what makes the digest read *which key sits in which slot* rather than
-    /// the set of keys.
+    /// FNV-64's offset and prime over `keys` in the order given, one whole key
+    /// per step rather than one byte, so byte-wise FNV-1a does not reproduce
+    /// these digests. The multiply after each XOR is what makes the digest
+    /// read *which key sits in which slot* rather than the set of keys.
     fn fold(keys: &[u64]) -> u64 {
         const OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
         const PRIME: u64 = 0x0000_0100_0000_01b3;
@@ -137,8 +137,8 @@ mod tests {
             .fold(OFFSET, |digest, key| (digest ^ key).wrapping_mul(PRIME))
     }
 
-    /// Every key the table holds for hands up to `max_hand_count`, in
-    /// canonical index order.
+    /// Every key the table holds for hands up to `max_hand_count`: board,
+    /// then hands color → kind → count, then `side`.
     fn walk(max_hand_count: u8) -> Vec<u64> {
         let mut keys = Vec::new();
         for color in Color::all() {
@@ -171,11 +171,12 @@ mod tests {
     /// here and silently rebaselines every transposition-table result a
     /// consumer has recorded.
     ///
-    /// The fold walks every entry in canonical index order and mixes
+    /// The fold walks every entry in a fixed order and mixes
     /// order-sensitively, so it reads *which key sits in which slot* rather
     /// than the set of keys. Endpoints alone cannot do this: the first and
     /// last values drawn are fixed points of any re-nesting of the loops, so a
-    /// swap that renumbers all 2268 board keys leaves them where they were.
+    /// re-nesting that renumbers nearly every board key leaves them where they
+    /// were.
     ///
     /// Every key here reaches a consumer once released. Narrowing
     /// [`MAX_HAND_COUNT`] folds fewer of them and moves this digest without
