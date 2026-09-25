@@ -6,6 +6,7 @@
 
 mod common;
 mod do_undo;
+mod gives_check;
 #[cfg(feature = "_bench-internals")]
 mod internals;
 mod movegen;
@@ -16,7 +17,13 @@ criterion::criterion_main!(
     perft::benches,
     movegen::benches,
     do_undo::benches,
+    gives_check::benches,
     internals::benches,
 );
 #[cfg(not(feature = "_bench-internals"))]
-criterion::criterion_main!(perft::benches, movegen::benches, do_undo::benches);
+criterion::criterion_main!(
+    perft::benches,
+    movegen::benches,
+    do_undo::benches,
+    gives_check::benches,
+);

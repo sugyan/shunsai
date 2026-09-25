@@ -263,6 +263,44 @@ impl Position {
             None => false,
         }
     }
+
+    /// Whether `mv` checks the opponent's king — what [`Position::in_check`]
+    /// would answer after [`Position::do_move`], without making the move.
+    /// `false` when the opponent has no king.
+    ///
+    /// ⚠️ `mv` must be legal, in a position where the opponent is not
+    /// already in check (as no legal position has it); otherwise the answer
+    /// is unspecified, and it may panic.
+    pub fn gives_check(&self, mv: Move) -> bool {
+        let us = self.side_to_move();
+        let Some(king) = self.king_square(us.flip()) else {
+            return false;
+        };
+        match mv {
+            // A drop vacates nothing, so it can only check directly.
+            Move::Drop { piece, to } => {
+                tables::attacks_of(piece, to, self.occupied()).contains(king)
+            }
+            Move::Normal { from, to, promote } => {
+                let piece = self.piece_at(from).expect("gives_check: no piece to move");
+                let placed = if promote {
+                    piece.promote().expect("gives_check: piece cannot promote")
+                } else {
+                    piece
+                };
+                let occupied = (self.occupied() ^ Bitboard::single(from)) | Bitboard::single(to);
+                if tables::attacks_of(placed, to, occupied).contains(king) {
+                    return true;
+                }
+                // Before the move nothing of ours reaches the king, so only a
+                // slider behind `from` can: vacating it opens no other line.
+                if tables::line(king, from).is_empty() {
+                    return false;
+                }
+                !attackers_to(self, king, occupied, us, self.player_bb(us)).is_empty()
+            }
+        }
+    }
 }
 
 /// The pieces of `attackers_color`, restricted to `mask`, that attack
@@ -682,7 +720,7 @@ mod tests {
     }
 
     /// Which fixture covers what, and whether anything would notice its
-    /// removal. Four are individually held by a named liveness assertion; two
+    /// removal. Five are individually held by a named liveness assertion; two
     /// jointly hold one; two are corpus breadth, and dropping either of those
     /// is silent.
     const CALLBACK_POSITIONS: &[&str] = &[
@@ -716,6 +754,11 @@ mod tests {
         // and what reaches 4h is its diagonal sidestep. Held by
         // `assert!(dragon_only > 0)`.
         "4k4/9/9/9/9/9/6+r2/9/4K4 b - 1",
+        // Discovered checks: a lance, a bishop and a rook each aimed at
+        // White's king through one Black piece that can step off the line
+        // (silver 5e, knight 7c, gold 3a). Held by `assert!(discovered > 0)`,
+        // which nothing else satisfies.
+        "4k1G1R/9/2N6/9/B3S4/9/9/9/K3L4 b - 1",
     ];
 
     fn position_of(sfen: &str) -> Position {
@@ -1113,6 +1156,95 @@ mod tests {
         // whole suite including the deep perft values.
         assert!(doubles > 0, "no double check reached; the OR is untested");
         assert!(double_pins > 0, "no double pin reached; the OR is untested");
+    }
+
+    /// `gives_check` against making the move and asking `in_check`, for
+    /// every legal move of each fixture and of every position one ply from it.
+    #[test]
+    fn gives_check_agrees_with_making_the_move() {
+        /// Each counts checks only one part of `gives_check` finds, so
+        /// dropping that part fails the comparison: a check by a slider
+        /// other than the moved piece (the discovered-check branch), a direct
+        /// check the unpromoted piece would not give (`placed`), and a drop.
+        #[derive(Default)]
+        struct Reached {
+            nodes: u64,
+            checks: u64,
+            discovered: u64,
+            by_promotion: u64,
+            by_drop: u64,
+        }
+        fn walk(position: &mut Position, depth: u32, reached: &mut Reached) {
+            let us = position.side_to_move();
+            // A position whose side *not* to move is already in check is
+            // outside `gives_check`'s contract, and one fixture starts in such
+            // a position. Its children are legal, so it is walked but not
+            // asked.
+            let legal = !position.king_square(us.flip()).is_some_and(|king| {
+                let occupied = position.occupied();
+                !attackers_to(position, king, occupied, us, position.player_bb(us)).is_empty()
+            });
+            if legal {
+                reached.nodes += 1;
+            }
+            for mv in position.legal_moves() {
+                let undo = position.do_move(mv);
+                let expected = position.in_check();
+                if legal && expected {
+                    reached.checks += 1;
+                    let king = position.king_square(us.flip()).unwrap();
+                    let occupied = position.occupied();
+                    let checkers =
+                        attackers_to(position, king, occupied, us, position.player_bb(us));
+                    match mv {
+                        Move::Normal { to, promote, .. } => {
+                            if !(checkers & !Bitboard::single(to)).is_empty() {
+                                reached.discovered += 1;
+                            }
+                            let moved = position.piece_at(to).unwrap();
+                            let unpromoted = if promote {
+                                moved.unpromote().unwrap()
+                            } else {
+                                moved
+                            };
+                            if checkers.contains(to)
+                                && !tables::attacks_of(unpromoted, to, occupied).contains(king)
+                            {
+                                reached.by_promotion += 1;
+                            }
+                        }
+                        Move::Drop { .. } => reached.by_drop += 1,
+                    }
+                }
+                if depth > 1 {
+                    walk(position, depth - 1, reached);
+                }
+                position.undo_move(mv, undo);
+                if legal {
+                    assert_eq!(
+                        position.gives_check(mv),
+                        expected,
+                        "gives_check disagrees on {mv:?} in\n{position:?}"
+                    );
+                }
+            }
+        }
+        let mut reached = Reached::default();
+        for sfen in CALLBACK_POSITIONS {
+            walk(&mut position_of(sfen), 2, &mut reached);
+        }
+        let Reached {
+            nodes,
+            checks,
+            discovered,
+            by_promotion,
+            by_drop,
+        } = reached;
+        assert!(nodes > 500, "test covered only {nodes} nodes");
+        assert!(checks > 0, "no move gave check");
+        assert!(discovered > 0, "no discovered check reached");
+        assert!(by_promotion > 0, "no check that only the promotion gives");
+        assert!(by_drop > 0, "no drop gave check");
     }
 
     fn move_key(mv: Move) -> (u8, u8, u8, u8) {
