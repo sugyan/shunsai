@@ -223,6 +223,36 @@ impl Position {
         self.key = undo.key;
     }
 
+    /// Passes the turn: the other player is to move, and nothing else
+    /// changes — for null-move pruning, or to ask what the opponent
+    /// threatens. Taken back with [`Position::undo_null_move`].
+    ///
+    /// The key becomes that of the same board with the other player to move.
+    /// [`Position::ply`] does not change, since a pass is not a move of the
+    /// game.
+    ///
+    /// ⚠️ The side to move must not be in check: passing would leave its king
+    /// en prise. Checked only by a `debug_assert!`; in release builds
+    /// [`Position::generate_moves`] is unspecified on the result.
+    pub fn do_null_move(&mut self) {
+        debug_assert!(
+            !self.in_check(),
+            "do_null_move: the side to move is in check"
+        );
+        self.side_to_move = self.side_to_move.flip();
+        self.key ^= zobrist::side_key();
+    }
+
+    /// Undoes the last [`Position::do_null_move`].
+    ///
+    /// ⚠️ Every move made since must be undone first. A call that does not
+    /// match a `do_null_move` is not checked and corrupts the position
+    /// silently.
+    pub fn undo_null_move(&mut self) {
+        self.side_to_move = self.side_to_move.flip();
+        self.key ^= zobrist::side_key();
+    }
+
     /// This position with `piece` dropped on `to`. The drop must be legal
     /// apart from any pawn-drop-mate rule.
     ///
@@ -506,6 +536,25 @@ mod tests {
         let undo = next.do_move(advance);
         next.undo_move(advance, undo);
         assert_eq!(next, with_hand.with_drop(bishop, square));
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "the side to move is in check")]
+    fn null_move_in_check_panics_in_debug_builds() {
+        // 5i king in check from a white rook on 5e.
+        let mut partial = PartialPosition::empty();
+        for (file, rank, piece_kind, color) in [
+            (5, 9, PieceKind::King, Color::Black),
+            (5, 5, PieceKind::Rook, Color::White),
+            (5, 1, PieceKind::King, Color::White),
+        ] {
+            partial.piece_set(
+                Square::new(file, rank).unwrap(),
+                Some(Piece::new(piece_kind, color)),
+            );
+        }
+        Position::new(partial).do_null_move();
     }
 
     #[test]
