@@ -71,7 +71,8 @@ impl Position {
         }
         for piece_kind in Hand::all_hand_pieces() {
             // Moves only carry pieces between the board and the hands, so
-            // this total bounds every hand this position can reach.
+            // this total bounds every hand this position can reach, and the
+            // key table has to cover it.
             let on_board = position.piece_bb[piece_kind.array_index()].count()
                 + piece_kind.promote().map_or(0, |promoted| {
                     position.piece_bb[promoted.array_index()].count()
@@ -81,8 +82,9 @@ impl Position {
                 .map(|hand| u32::from(hand.count(piece_kind).unwrap_or(0)))
                 .sum();
             assert!(
-                on_board + in_hands <= u32::from(u8::MAX),
-                "more than 255 of {piece_kind:?} across the board and both hands"
+                on_board + in_hands <= zobrist::MAX_HAND_COUNT as u32,
+                "more than {} of {piece_kind:?} across the board and both hands",
+                zobrist::MAX_HAND_COUNT
             );
         }
         for color in Color::all() {
@@ -671,7 +673,8 @@ mod tests {
     /// The same capture into the table's last entry.
     #[test]
     fn a_capture_to_the_last_count_keeps_the_key_a_function_of_the_position() {
-        assert_eq!(capture_one_more_pawn(u8::MAX - 1), u8::MAX);
+        let last = zobrist::MAX_HAND_COUNT as u8;
+        assert_eq!(capture_one_more_pawn(last - 1), last);
     }
 
     /// Past 255 of a kind, some capture carries a hand past what [`Hand`]

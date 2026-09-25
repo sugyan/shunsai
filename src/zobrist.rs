@@ -8,7 +8,7 @@ use shogi_core::{Color, Piece, PieceKind, Square};
 
 /// The largest count a [`Hand`](shogi_core::Hand) can hold, so [`hand_key`]
 /// is total over every hand a position can express.
-const MAX_HAND_COUNT: usize = u8::MAX as usize;
+pub(crate) const MAX_HAND_COUNT: usize = u8::MAX as usize;
 /// The most of one kind a standard set can put in one hand (18 pawns), and
 /// the last count drawn before [`KEYS`]'s `side`.
 pub(crate) const STANDARD_HAND_COUNT: usize = 18;
