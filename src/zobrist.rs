@@ -9,9 +9,9 @@ use shogi_core::{Color, Piece, PieceKind, Square};
 /// The largest count a [`Hand`](shogi_core::Hand) can hold, so [`hand_key`]
 /// is total over every hand a position can express.
 const MAX_HAND_COUNT: usize = u8::MAX as usize;
-/// The largest count drawn before [`KEYS`]'s `side`, and the most of one kind
-/// a standard set can put in one hand (18 pawns).
-pub(crate) const PUBLISHED_HAND_COUNT: usize = 18;
+/// The most of one kind a standard set can put in one hand (18 pawns), and
+/// the last count drawn before [`KEYS`]'s `side`.
+pub(crate) const STANDARD_HAND_COUNT: usize = 18;
 /// Piece kinds that can be held in hand (pawn..rook).
 const HAND_KINDS: usize = 7;
 
@@ -67,7 +67,7 @@ const fn keys() -> Keys {
         while piece_kind < HAND_KINDS {
             // Entry 0 stays zero: an empty hand contributes nothing.
             let mut count = 1;
-            while count <= PUBLISHED_HAND_COUNT {
+            while count <= STANDARD_HAND_COUNT {
                 keys.hand[color][piece_kind][count] = splitmix64(&mut state);
                 count += 1;
             }
@@ -76,21 +76,22 @@ const fn keys() -> Keys {
         color += 1;
     }
     keys.side = splitmix64(&mut state);
-    // Counts a standard set cannot reach are drawn here, after `side`, so
-    // every key above holds the value it published. Merging this loop into
-    // the one before `side` renumbers all of them.
-    let mut color = 0;
-    while color < Color::NUM {
-        let mut piece_kind = 0;
-        while piece_kind < HAND_KINDS {
-            let mut count = PUBLISHED_HAND_COUNT + 1;
-            while count <= MAX_HAND_COUNT {
+    // Counts past a standard set are drawn after `side`, so drawing them
+    // moves no key above, and count-major, so every width is a prefix of
+    // every wider one: moving `MAX_HAND_COUNT` adds or drops keys without
+    // moving any it keeps.
+    let mut count = STANDARD_HAND_COUNT + 1;
+    while count <= MAX_HAND_COUNT {
+        let mut color = 0;
+        while color < Color::NUM {
+            let mut piece_kind = 0;
+            while piece_kind < HAND_KINDS {
                 keys.hand[color][piece_kind][count] = splitmix64(&mut state);
-                count += 1;
+                piece_kind += 1;
             }
-            piece_kind += 1;
+            color += 1;
         }
-        color += 1;
+        count += 1;
     }
     keys
 }
@@ -173,8 +174,10 @@ mod tests {
     /// last values drawn are fixed points of any re-nesting of the loops, so a
     /// swap that renumbers all 2268 board keys leaves them where they were.
     ///
-    /// This is the digest that legitimately moves whenever the table grows;
-    /// `the_published_keys_have_not_moved` is the one that may not.
+    /// Every key here reaches a consumer once released. Narrowing
+    /// [`MAX_HAND_COUNT`] folds fewer of them and moves this digest without
+    /// moving a key; any other change that moves it renumbers keys a consumer
+    /// may hold.
     #[test]
     fn the_draw_order_is_fixed() {
         let keys = walk(MAX_HAND_COUNT as u8);
@@ -186,14 +189,13 @@ mod tests {
                 + Color::NUM * HAND_KINDS * MAX_HAND_COUNT
                 + 1
         );
-        assert_eq!(fold(&keys), 0x9e63_d5cb_7480_11d4);
+        assert_eq!(fold(&keys), 0x2e2e_3616_c5d3_2942);
     }
 
-    /// Pins the keys that have already shipped, and nothing else. Its bound
-    /// and its count are literals rather than [`MAX_HAND_COUNT`] because it
-    /// states what a released version put in a consumer's transposition
-    /// table, not what the table currently holds — the two part company the
-    /// moment the table grows, and only this digest may never move.
+    /// Pins the keys of the 18-wide table, which every release through 0.1.2
+    /// shipped, and nothing else. Its bound and its count are literals rather
+    /// than constants because it states what those releases put in a
+    /// consumer's transposition table, not what the table holds now.
     #[test]
     fn the_published_keys_have_not_moved() {
         let keys = walk(18);

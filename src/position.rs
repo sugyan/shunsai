@@ -585,7 +585,7 @@ mod tests {
     /// The key is asserted rather than only the absence of a panic, so a
     /// seeding loop that stopped short would still fail.
     #[test]
-    fn a_hand_above_the_published_count_constructs_and_hashes() {
+    fn a_hand_above_the_standard_count_constructs_and_hashes() {
         let mut partial = PartialPosition::empty();
         partial.piece_set(
             Square::new(5, 1).unwrap(),
@@ -603,7 +603,7 @@ mod tests {
         let position = Position::new(partial);
         let pawns = position.hand(Color::Black).count(PieceKind::Pawn).unwrap();
         assert_eq!(pawns, 19);
-        assert!(usize::from(pawns) > zobrist::PUBLISHED_HAND_COUNT);
+        assert!(usize::from(pawns) > zobrist::STANDARD_HAND_COUNT);
         assert_eq!(position.key(), 0x4a5e_f33a_a5c6_ea18);
     }
 
@@ -665,9 +665,9 @@ mod tests {
     /// board. Nothing is malformed, so the position constructs and hashes,
     /// and the capture crosses the limit.
     #[test]
-    fn a_capture_past_the_published_count_keeps_the_key_a_function_of_the_position() {
-        let pawns = capture_one_more_pawn(zobrist::PUBLISHED_HAND_COUNT as u8);
-        assert!(usize::from(pawns) > zobrist::PUBLISHED_HAND_COUNT);
+    fn a_capture_past_the_standard_count_keeps_the_key_a_function_of_the_position() {
+        let pawns = capture_one_more_pawn(zobrist::STANDARD_HAND_COUNT as u8);
+        assert!(usize::from(pawns) > zobrist::STANDARD_HAND_COUNT);
     }
 
     /// The same capture into the table's last entry.
