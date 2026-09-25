@@ -315,27 +315,27 @@ first version of `the_draw_order_is_fixed` pinned witnesses at the ends of the s
 a full renumbering passed the whole suite; it now folds every entry in canonical index
 order. Any guard over an ordered table needs the same shape.
 
-⚠️ **Widening the hand table is append-only, and the alternatives were not close.**
-The counts past a standard set's reach are drawn after `side`, so no published key moves
-— because nothing could announce it if one did: a renumbering arrives as a
-caret-compatible patch, and `cargo-semver-checks` cannot see a key value.
-[#56](https://github.com/sugyan/shunsai/issues/56) has the reachability analysis;
-rejected there and never committed:
+⚠️ **The hand table was widened append-only, and its bound moved rather than went away.**
+Counts past a standard set are drawn after `side`, so no published key moved — nothing
+could have announced it if one had: a renumbering arrives as a caret-compatible patch, and
+`cargo-semver-checks` cannot see a key value. They are drawn count-major, so every width is
+a prefix of every wider one, which is what [#56](https://github.com/sugyan/shunsai/issues/56)'s
+third shape asked for without renumbering
+anything published. `Position::new` still refuses a kind whose total across both hands and
+the board exceeds the table: moves conserve that total, so it bounds every hand. The issue
+has the reachability analysis. Not taken, and never committed:
 
-- **Documenting the bound instead.** No true precondition can be written over the hands.
-  Eighteen in hand with one more of that kind on the board satisfies any per-hand bound,
-  constructs, hashes, and panics on a later capture.
-- **A checked constructor.** A `feat`, so 0.2.0, which a consumer on `"0.1"` never
-  receives — and the infallible `new` goes on panicking beside it.
+- **Keeping 18 and checking it.** True and sufficient for the same reason, but it refuses
+  diagrams a `Hand` represents, and widening moved no published key, so refusing them
+  bought nothing.
+- **A checked constructor.** `new` refuses at construction now, which is what #56 asked
+  of the panic; a `Result` for inputs no game reaches is an API addition nothing has
+  asked for.
 - **A feature flag.** Cargo features unify across a dependency graph, so no consumer can
-  hold the narrow build, and the narrow arm is the panic. The width is a free parameter
-  now in any case: every width agrees on the keys it shares, so lowering one later costs
-  no rebaseline.
+  hold the narrow build, and the narrow arm is the panic.
 
-**Reopens if** the `.rodata` cost binds. The question is then the table's *layout*, not
-its width — a transposed row, or a split high table, holds the same values at the same
-size with a smaller hot region — and it is settled by a local `do_undo/games-v1` A/B,
-which nothing has taken.
+**Reopens if** the `.rodata` cost binds: narrowing `MAX_HAND_COUNT` drops keys without
+moving any it keeps, and lowers `Position::new`'s bound with it.
 
 ## Packaging and releasing
 
