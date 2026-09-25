@@ -43,10 +43,12 @@ pub struct Position {
 impl Position {
     /// Builds a [`Position`] from a [`PartialPosition`].
     ///
-    /// ⚠️ For each hand piece kind, both hands and the board together — a
-    /// promoted piece counting as the kind it demotes to — must hold at most
-    /// 255 of it. Past that a capture wraps [`Hand`]'s count to zero, and the
-    /// hand and the key are corrupted silently in release builds.
+    /// # Panics
+    ///
+    /// If both hands and the board together hold more than 255 of one hand
+    /// piece kind, a promoted piece counting as the kind it demotes to. A
+    /// capture could then carry a hand past what [`Hand`] can count, so the
+    /// position is refused here rather than failing on a later move.
     pub fn new(partial: PartialPosition) -> Self {
         let hands = [
             partial.hand_of_a_player(Color::Black),
@@ -66,6 +68,22 @@ impl Position {
             if let Some(piece) = partial.piece_at(square) {
                 position.put_piece(square, piece);
             }
+        }
+        for piece_kind in Hand::all_hand_pieces() {
+            // Moves only carry pieces between the board and the hands, so
+            // this total bounds every hand this position can reach.
+            let on_board = position.piece_bb[piece_kind.array_index()].count()
+                + piece_kind.promote().map_or(0, |promoted| {
+                    position.piece_bb[promoted.array_index()].count()
+                });
+            let in_hands: u32 = hands
+                .iter()
+                .map(|hand| u32::from(hand.count(piece_kind).unwrap_or(0)))
+                .sum();
+            assert!(
+                on_board + in_hands <= u32::from(u8::MAX),
+                "more than 255 of {piece_kind:?} across the board and both hands"
+            );
         }
         for color in Color::all() {
             for piece_kind in Hand::all_hand_pieces() {
@@ -589,13 +607,9 @@ mod tests {
         assert_eq!(position.key(), 0x4a5e_f33a_a5c6_ea18);
     }
 
-    /// Issue #56's second path, and the one that reached a search: a hand at
-    /// the standard set's limit with one more of that kind still on the
-    /// board. Nothing is malformed, so the position constructs and hashes,
-    /// and the capture that crosses the limit is one this crate itself hands
-    /// the caller.
-    #[test]
-    fn a_capture_past_the_published_count_keeps_the_key_a_function_of_the_position() {
+    /// Black holding `held` pawns, with one more White pawn that Black's
+    /// rook can take.
+    fn one_pawn_short_of(held: u8) -> PartialPosition {
         let mut partial = PartialPosition::empty();
         for (file, rank, piece_kind, color) in [
             (5, 1, PieceKind::King, Color::White),
@@ -609,16 +623,25 @@ mod tests {
             );
         }
         let hand = partial.hand_of_a_player_mut(Color::Black);
-        for _ in 0..18 {
+        for _ in 0..held {
             *hand = hand.added(PieceKind::Pawn).unwrap();
         }
+        partial
+    }
 
+    /// Takes the pawn [`one_pawn_short_of`] leaves on the board, checks the
+    /// key is still the key of the position the capture reached, and returns
+    /// how many pawns the hand then holds.
+    fn capture_one_more_pawn(held: u8) -> u8 {
+        let partial = one_pawn_short_of(held);
         let mut position = Position::new(partial.clone());
         assert_eq!(
             position.hand(Color::Black).count(PieceKind::Pawn),
-            Some(zobrist::PUBLISHED_HAND_COUNT as u8)
+            Some(held)
         );
 
+        // One this crate itself hands a caller, not a move written to reach
+        // the count.
         let capture = mv((5, 5), (5, 4), false);
         assert!(position.legal_moves().contains(&capture));
 
@@ -627,18 +650,59 @@ mod tests {
             undo.captured,
             Some(Piece::new(PieceKind::Pawn, Color::White))
         );
-        let pawns = position.hand(Color::Black).count(PieceKind::Pawn).unwrap();
-        assert_eq!(pawns, 19);
-        assert!(usize::from(pawns) > zobrist::PUBLISHED_HAND_COUNT);
-
-        // The incremental key must still be the key of the position, not just
-        // a value that did not panic.
         let mut after = partial.clone();
         after.make_move(capture).unwrap();
         assert_eq!(position, Position::new(after));
 
+        let pawns = position.hand(Color::Black).count(PieceKind::Pawn).unwrap();
         position.undo_move(capture, undo);
         assert_eq!(position, Position::new(partial));
+        pawns
+    }
+
+    /// Issue #56's second path, and the one that reached a search: a hand at
+    /// the standard set's limit with one more of that kind still on the
+    /// board. Nothing is malformed, so the position constructs and hashes,
+    /// and the capture crosses the limit.
+    #[test]
+    fn a_capture_past_the_published_count_keeps_the_key_a_function_of_the_position() {
+        let pawns = capture_one_more_pawn(zobrist::PUBLISHED_HAND_COUNT as u8);
+        assert!(usize::from(pawns) > zobrist::PUBLISHED_HAND_COUNT);
+    }
+
+    /// The same capture into the table's last entry.
+    #[test]
+    fn a_capture_to_the_last_count_keeps_the_key_a_function_of_the_position() {
+        assert_eq!(capture_one_more_pawn(u8::MAX - 1), u8::MAX);
+    }
+
+    /// Past 255 of a kind, some capture carries a hand past what [`Hand`]
+    /// counts, and `undo_move` fails on the wrapped count; refused while
+    /// nothing has been played. Every term of the total is needed to reach
+    /// 256 here — both hands, a pawn and a promoted pawn — so leaving any one
+    /// of them out of the check accepts this position.
+    #[test]
+    #[should_panic(expected = "more than 255 of Pawn")]
+    fn a_kind_past_the_last_count_is_refused_at_construction() {
+        let mut partial = PartialPosition::empty();
+        for (file, rank, piece_kind, color) in [
+            (5, 1, PieceKind::King, Color::White),
+            (5, 4, PieceKind::Pawn, Color::White),
+            (4, 4, PieceKind::ProPawn, Color::White),
+            (5, 9, PieceKind::King, Color::Black),
+        ] {
+            partial.piece_set(
+                Square::new(file, rank).unwrap(),
+                Some(Piece::new(piece_kind, color)),
+            );
+        }
+        for (color, held) in [(Color::Black, 200), (Color::White, 54)] {
+            let hand = partial.hand_of_a_player_mut(color);
+            for _ in 0..held {
+                *hand = hand.added(PieceKind::Pawn).unwrap();
+            }
+        }
+        Position::new(partial);
     }
 
     /// The one condition `add_to_hand`'s `expect` can report: a captured king,
