@@ -3,10 +3,12 @@
 
 use shogi_core::PartialPosition;
 use shogi_usi_parser::FromUsi;
-use shunsai::Position;
+use shunsai::{MAX_LEGAL_MOVES, Position};
 use std::ops::ControlFlow;
 
 const MAX_MOVES_SFEN: &str = "R8/2K1S1SSk/4B4/9/9/9/9/9/1L1L1L3 b RBGSNLP3g3n17p 1";
+/// Seven rooks and six bishops: more of a kind than a standard set holds.
+const OVER_STANDARD_SFEN: &str = "4k4/7+R1/1+B7/3+B5/1+R7/7+R1/2+R1+B1+R2/4+B3+B/K3+R4 b RBGSNLP 1";
 const MATSURI_SFEN: &str = "l6nl/5+P1gk/2np1S3/p1p4Pp/3P2Sp1/1PPb2P1P/P5GS1/R8/LN4bKL w GR5pnsg 1";
 
 /// Uses the callback API, so the known perft values validate the hot path
@@ -93,6 +95,17 @@ fn initial_position_deep() {
 fn max_moves_position() {
     assert_eq!(perft_sfen(MAX_MOVES_SFEN, 1), 593);
     assert_eq!(perft_sfen(MAX_MOVES_SFEN, 2), 105677);
+}
+
+/// `MAX_LEGAL_MOVES` bounds a standard set's material only. Past it, a
+/// position `Position::new` accepts has more; the 600 moves matched
+/// `shogi_legality_lite` 0.1's full legal-move set, move for move, on
+/// 2026-09-25.
+#[test]
+fn more_than_a_standard_set_can_exceed_max_legal_moves() {
+    let moves = perft_sfen(OVER_STANDARD_SFEN, 1);
+    assert_eq!(moves, 600);
+    assert!(moves > MAX_LEGAL_MOVES as u64);
 }
 
 /// Depth 3 established 2026-07-23 by consensus of eight independent
