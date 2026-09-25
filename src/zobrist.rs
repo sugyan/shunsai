@@ -15,13 +15,16 @@ pub(crate) const STANDARD_HAND_COUNT: usize = 18;
 /// Piece kinds that can be held in hand (pawn..rook).
 const HAND_KINDS: usize = 7;
 
+/// `repr(C)` keeps the fields in the order written, so the board keys lead.
+#[repr(C)]
 struct Keys {
     /// Keyed by `[color][piece_kind][square]`.
     board: [[[u64; Square::NUM]; PieceKind::NUM]; Color::NUM],
-    /// Keyed by `[color][piece_kind][count]`; the key of a hand holding `n`
-    /// pieces is the XOR of entries `1..=n`, so adding/removing one piece
-    /// XORs a single entry.
-    hand: [[[u64; MAX_HAND_COUNT + 1]; HAND_KINDS]; Color::NUM],
+    /// Keyed by `[count][color][piece_kind]`, count-major so the counts a game
+    /// reaches sit together rather than one row width apart. The key of a
+    /// hand holding `n` pieces is the XOR of entries `1..=n`, so
+    /// adding/removing one piece XORs a single entry.
+    hand: [[[u64; HAND_KINDS]; Color::NUM]; MAX_HAND_COUNT + 1],
     side: u64,
 }
 
@@ -45,7 +48,7 @@ const fn keys() -> Keys {
     let mut state = 0x0073_6875_6e73_6169;
     let mut keys = Keys {
         board: [[[0; Square::NUM]; PieceKind::NUM]; Color::NUM],
-        hand: [[[0; MAX_HAND_COUNT + 1]; HAND_KINDS]; Color::NUM],
+        hand: [[[0; HAND_KINDS]; Color::NUM]; MAX_HAND_COUNT + 1],
         side: 0,
     };
     let mut color = 0;
@@ -68,7 +71,7 @@ const fn keys() -> Keys {
             // Entry 0 stays zero: an empty hand contributes nothing.
             let mut count = 1;
             while count <= STANDARD_HAND_COUNT {
-                keys.hand[color][piece_kind][count] = splitmix64(&mut state);
+                keys.hand[count][color][piece_kind] = splitmix64(&mut state);
                 count += 1;
             }
             piece_kind += 1;
@@ -86,7 +89,7 @@ const fn keys() -> Keys {
         while color < Color::NUM {
             let mut piece_kind = 0;
             while piece_kind < HAND_KINDS {
-                keys.hand[color][piece_kind][count] = splitmix64(&mut state);
+                keys.hand[count][color][piece_kind] = splitmix64(&mut state);
                 piece_kind += 1;
             }
             color += 1;
@@ -111,7 +114,7 @@ pub(crate) fn board_key(piece: Piece, square: Square) -> u64 {
 /// it would read is the one entry never drawn.
 pub(crate) fn hand_key(color: Color, piece_kind: PieceKind, count: u8) -> u64 {
     debug_assert!(count > 0);
-    KEYS.hand[color.array_index()][piece_kind.array_index()][count as usize]
+    KEYS.hand[count as usize][color.array_index()][piece_kind.array_index()]
 }
 
 /// The key toggled on every side-to-move change.
