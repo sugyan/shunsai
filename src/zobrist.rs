@@ -159,6 +159,18 @@ mod tests {
         keys
     }
 
+    /// Every key the table holds. `Keys` is all `u64` and `repr(C)`, so its
+    /// size counts them, less the count-0 entries never drawn — which is what
+    /// makes a key family missing from [`walk`] fail here.
+    fn whole_table() -> Vec<u64> {
+        let keys = walk(MAX_HAND_COUNT as u8);
+        assert_eq!(
+            (keys.len() + Color::NUM * HAND_KINDS) * size_of::<u64>(),
+            size_of::<Keys>()
+        );
+        keys
+    }
+
     #[test]
     fn deterministic() {
         let piece = Piece::new(PieceKind::Pawn, Color::Black);
@@ -184,16 +196,7 @@ mod tests {
     /// may hold.
     #[test]
     fn the_draw_order_is_fixed() {
-        let keys = walk(MAX_HAND_COUNT as u8);
-        // Every key the table holds is in the fold, so nothing can be
-        // renumbered outside it.
-        assert_eq!(
-            keys.len(),
-            Color::NUM * PieceKind::NUM * Square::NUM
-                + Color::NUM * HAND_KINDS * MAX_HAND_COUNT
-                + 1
-        );
-        assert_eq!(fold(&keys), 0x2e2e_3616_c5d3_2942);
+        assert_eq!(fold(&whole_table()), 0x2e2e_3616_c5d3_2942);
     }
 
     /// Pins the keys of the 18-wide table, which every release through 0.1.2
@@ -209,29 +212,9 @@ mod tests {
 
     #[test]
     fn keys_are_distinct() {
-        use std::collections::HashSet;
-        let mut seen = HashSet::new();
-        for piece in Piece::all() {
-            for square in Square::all() {
-                assert!(seen.insert(board_key(piece, square)));
-            }
-        }
-        for color in Color::all() {
-            for piece_kind in shogi_core::Hand::all_hand_pieces() {
-                for count in 1..=MAX_HAND_COUNT as u8 {
-                    assert!(seen.insert(hand_key(color, piece_kind, count)));
-                }
-            }
-        }
-        assert!(seen.insert(side_key()));
-        // Narrowing either walk above would drop keys from the set with every
-        // insert still succeeding.
-        assert_eq!(
-            seen.len(),
-            Color::NUM * PieceKind::NUM * Square::NUM
-                + Color::NUM * HAND_KINDS * MAX_HAND_COUNT
-                + 1
-        );
-        assert!(!seen.contains(&0));
+        let keys = whole_table();
+        let distinct: std::collections::HashSet<u64> = keys.iter().copied().collect();
+        assert_eq!(distinct.len(), keys.len());
+        assert!(!distinct.contains(&0));
     }
 }
