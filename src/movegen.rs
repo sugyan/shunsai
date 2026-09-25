@@ -263,6 +263,20 @@ impl Position {
             None => false,
         }
     }
+
+    /// The pieces of `color` that attack `square` when exactly the squares
+    /// in `occupied` are occupied.
+    ///
+    /// Pass [`Position::occupied`] for the board as it stands. A piece whose
+    /// square is not in `occupied` neither attacks nor blocks, so lifting
+    /// pieces out of it reveals the sliders behind them — what a static
+    /// exchange evaluation asks after each capture. Pins are not considered:
+    /// a pinned piece still attacks. Whether `square` itself is occupied
+    /// makes no difference.
+    pub fn attackers_to(&self, square: Square, occupied: Bitboard, color: Color) -> Bitboard {
+        let mask = self.player_bb(color) & occupied;
+        attackers_to(self, square, occupied, color, mask)
+    }
 }
 
 /// The pieces of `attackers_color`, restricted to `mask`, that attack
@@ -1113,6 +1127,87 @@ mod tests {
         // whole suite including the deep perft values.
         assert!(doubles > 0, "no double check reached; the OR is untested");
         assert!(double_pins > 0, "no double pin reached; the OR is untested");
+    }
+
+    /// For every square, the pieces of `color` in `occupied` whose attack
+    /// set, built forwards from where each stands, reaches it — the public
+    /// `attackers_to`'s contract without the reverse lookup.
+    fn forward_attackers(
+        position: &Position,
+        occupied: Bitboard,
+        color: Color,
+    ) -> [Bitboard; Square::NUM] {
+        let mut attackers = [Bitboard::EMPTY; Square::NUM];
+        for from in position.player_bb(color) & occupied {
+            let piece = position.piece_at(from).unwrap();
+            for square in tables::attacks_of(piece, from, occupied) {
+                attackers[square.array_index()] |= Bitboard::single(from);
+            }
+        }
+        attackers
+    }
+
+    /// `Position::attackers_to` against the forward scan, for both colours on
+    /// every square, on the board as it stands and with every pawn lifted out
+    /// of `occupied` — the x-ray question a static exchange evaluation asks.
+    /// Held over every position one ply deep from each fixture.
+    #[test]
+    fn attackers_to_agrees_with_a_forward_scan() {
+        let mut nodes = 0;
+        // Each counts a case where one part of the public method would change
+        // the answer if dropped, which is what makes the agreement evidence:
+        // a lifted pawn reported without `& occupied`, the other colour's
+        // pieces reported without `player_bb(color)`, and an attacker that
+        // lifting the pawns revealed.
+        let mut lifted = 0;
+        let mut other_colour = 0;
+        let mut xrays = 0;
+        for sfen in CALLBACK_POSITIONS {
+            let root = position_of(sfen);
+            let mut positions = vec![root.clone()];
+            for mv in root.legal_moves() {
+                let mut next = root.clone();
+                next.do_move(mv);
+                positions.push(next);
+            }
+            for position in &positions {
+                let full = position.occupied();
+                let no_pawns = full & !position.piece_kind_bb(PieceKind::Pawn);
+                for color in Color::all() {
+                    let on_full = forward_attackers(position, full, color);
+                    let on_no_pawns = forward_attackers(position, no_pawns, color);
+                    for square in Square::all() {
+                        let index = square.array_index();
+                        for (occupied, expected) in
+                            [(full, on_full[index]), (no_pawns, on_no_pawns[index])]
+                        {
+                            assert_eq!(
+                                position.attackers_to(square, occupied, color),
+                                expected,
+                                "attackers_to disagrees on {square:?} for {color:?} in\n{position:?}"
+                            );
+                            let unmasked = position.player_bb(color);
+                            if attackers_to(position, square, occupied, color, unmasked) != expected
+                            {
+                                lifted += 1;
+                            }
+                            if attackers_to(position, square, occupied, color, occupied) != expected
+                            {
+                                other_colour += 1;
+                            }
+                        }
+                        if !(on_no_pawns[index] & !on_full[index]).is_empty() {
+                            xrays += 1;
+                        }
+                    }
+                }
+                nodes += 1;
+            }
+        }
+        assert!(nodes > 500, "test covered only {nodes} nodes");
+        assert!(lifted > 0, "no lifted pawn was an attacker");
+        assert!(other_colour > 0, "the other colour never attacked a square");
+        assert!(xrays > 0, "lifting the pawns revealed no attacker");
     }
 
     fn move_key(mv: Move) -> (u8, u8, u8, u8) {
