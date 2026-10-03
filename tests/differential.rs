@@ -49,7 +49,7 @@ fn assert_same_moves(partial: &PartialPosition, position: &Position, ply: usize)
 }
 
 /// A null move must reach exactly the position rebuilt with only the side to
-/// move flipped — `PartialEq` compares the key, the ply and every bitboard —
+/// move flipped — `PartialEq` compares every field, the side to move included —
 /// and taking it back must restore the position it was made in.
 fn assert_null_move_matches_rebuild(partial: &PartialPosition, position: &Position, ply: usize) {
     let mut flipped = partial.clone();

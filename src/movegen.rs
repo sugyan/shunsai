@@ -696,9 +696,8 @@ mod tests {
     }
 
     /// Which fixture covers what, and whether anything would notice its
-    /// removal. Four are individually held by a named liveness assertion; two
-    /// jointly hold one; two are corpus breadth, and dropping either of those
-    /// is silent.
+    /// removal. Five are individually held by a named liveness assertion; two
+    /// jointly hold one; one is corpus breadth, and dropping it is silent.
     const CALLBACK_POSITIONS: &[&str] = &[
         // Breadth: the ordinary opening shape, and the only position where
         // nothing can promote.
@@ -707,7 +706,9 @@ mod tests {
         // `dropped * 8 > nodes` margin in
         // `king_danger_agrees_with_the_unfiltered_scan`.
         "l6nl/5+P1gk/2np1S3/p1p4Pp/3P2Sp1/1PPb2P1P/P5GS1/R8/LN4bKL w GR5pnsg 1",
-        // Breadth: drop-heavy, and most of the node count.
+        // Drop-heavy, and most of the node count: without it
+        // `attackers_to_agrees_with_a_forward_scan` falls under its
+        // `nodes > 500`.
         "R8/2K1S1SSk/4B4/9/9/9/9/9/1L1L1L3 b RBGSNLP3g3n17p 1",
         // In check (a real game position), and — after Bx6h+ — the corpus's
         // only enemy *horse* held by the step term alone. Held by
@@ -1148,20 +1149,22 @@ mod tests {
     }
 
     /// `Position::attackers_to` against the forward scan, for both colours on
-    /// every square, on the board as it stands and with every pawn lifted out
-    /// of `occupied` — the x-ray question a static exchange evaluation asks.
-    /// Held over every position one ply deep from each fixture.
+    /// every square, on the board as it stands, with every pawn lifted out of
+    /// `occupied` — the x-ray question a static exchange evaluation asks — and
+    /// with every square filled. Held over every position one ply deep from
+    /// each fixture.
     #[test]
     fn attackers_to_agrees_with_a_forward_scan() {
         let mut nodes = 0;
         // Each counts a case where one part of the public method would change
         // the answer if dropped, which is what makes the agreement evidence:
         // a lifted pawn reported without `& occupied`, the other colour's
-        // pieces reported without `player_bb(color)`, and an attacker that
-        // lifting the pawns revealed.
+        // pieces reported without `player_bb(color)`, an attacker that lifting
+        // the pawns revealed, and one that filling the empty squares hid.
         let mut lifted = 0;
         let mut other_colour = 0;
         let mut xrays = 0;
+        let mut hidden = 0;
         for sfen in CALLBACK_POSITIONS {
             let root = position_of(sfen);
             let mut positions = vec![root.clone()];
@@ -1176,11 +1179,14 @@ mod tests {
                 for color in Color::all() {
                     let on_full = forward_attackers(position, full, color);
                     let on_no_pawns = forward_attackers(position, no_pawns, color);
+                    let on_all = forward_attackers(position, Bitboard::ALL, color);
                     for square in Square::all() {
                         let index = square.array_index();
-                        for (occupied, expected) in
-                            [(full, on_full[index]), (no_pawns, on_no_pawns[index])]
-                        {
+                        for (occupied, expected) in [
+                            (full, on_full[index]),
+                            (no_pawns, on_no_pawns[index]),
+                            (Bitboard::ALL, on_all[index]),
+                        ] {
                             assert_eq!(
                                 position.attackers_to(square, occupied, color),
                                 expected,
@@ -1199,6 +1205,9 @@ mod tests {
                         if !(on_no_pawns[index] & !on_full[index]).is_empty() {
                             xrays += 1;
                         }
+                        if !(on_full[index] & !on_all[index]).is_empty() {
+                            hidden += 1;
+                        }
                     }
                 }
                 nodes += 1;
@@ -1206,8 +1215,12 @@ mod tests {
         }
         assert!(nodes > 500, "test covered only {nodes} nodes");
         assert!(lifted > 0, "no lifted pawn was an attacker");
-        assert!(other_colour > 0, "the other colour never attacked a square");
+        assert!(
+            other_colour > 0,
+            "dropping `player_bb(color)` from the mask never changed an answer"
+        );
         assert!(xrays > 0, "lifting the pawns revealed no attacker");
+        assert!(hidden > 0, "filling the empty squares hid no attacker");
     }
 
     fn move_key(mv: Move) -> (u8, u8, u8, u8) {
