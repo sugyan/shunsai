@@ -29,13 +29,17 @@ use crate::bitboard::Bitboard;
 use crate::position::Position;
 use crate::tables;
 
-/// The most legal moves any shogi position has: the move count of
+/// The most legal moves a position has when it holds no more of any kind than
+/// a standard set: the move count of
 /// `R8/2K1S1SSk/4B4/9/9/9/9/9/1L1L1L3 b RBGSNLP3g3n17p 1`, asserted by
 /// `max_moves_position`.
 ///
-/// An upper bound on the number of legal moves in any position, so a move
-/// buffer sized from it never grows; [`Position::legal_moves`] sizes its own
-/// `Vec` from it.
+/// An upper bound for every such position, so a move buffer sized from it
+/// never grows there; [`Position::legal_moves`] sizes its own `Vec` from it.
+///
+/// ⚠️ [`Position::new`] also accepts positions holding more of a kind than a
+/// standard set, and those can exceed it: a fixed-capacity buffer sized from
+/// it overflows there.
 pub const MAX_LEGAL_MOVES: usize = 593;
 
 /// A group of legal moves that share an origin, as handed to
