@@ -23,14 +23,14 @@ use shogi_usi_parser::FromUsi;
 use shunsai::{MAX_LEGAL_MOVES, Position};
 
 /// Beyond any material score, so a mate always outranks a material gain.
-const MATE: i32 = 1 << 20;
+const MATE: i32 = 1 << 21;
 
 /// Deeper than this example is ever asked to go; bounds the mate window.
 const MAX_PLY: i32 = 128;
 
-/// Rough material values. Only the ratios matter, and that every one of them
-/// is far below [`MATE`].
-fn value(piece_kind: PieceKind) -> i32 {
+/// Rough material values. Only the ratios matter, and that no score can reach
+/// [`MATE`].
+const fn value(piece_kind: PieceKind) -> i32 {
     match piece_kind {
         PieceKind::Pawn => 100,
         PieceKind::Lance => 350,
@@ -48,6 +48,21 @@ fn value(piece_kind: PieceKind) -> i32 {
         PieceKind::ProRook => 1300,
     }
 }
+
+// `Position::new` refuses more than 255 of a kind across the board and both
+// hands, and a piece is worth at most its promoted value, so no material score
+// reaches this — nor, then, a mate score.
+const _: () = {
+    let most = 255
+        * (value(PieceKind::ProPawn)
+            + value(PieceKind::ProLance)
+            + value(PieceKind::ProKnight)
+            + value(PieceKind::ProSilver)
+            + value(PieceKind::Gold)
+            + value(PieceKind::ProBishop)
+            + value(PieceKind::ProRook));
+    assert!(most < MATE - MAX_PLY);
+};
 
 /// Material, from the side to move's point of view.
 fn evaluate(position: &Position) -> i32 {
