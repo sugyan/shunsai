@@ -165,9 +165,9 @@ impl Position {
 
     /// Makes `mv` on the board. `mv` must be legal in this position.
     ///
-    /// Returns what [`Position::undo_move`] needs to take it back. Moves are
-    /// undone in the reverse of the order they were made, each with its own
-    /// [`Undo`].
+    /// Returns what [`Position::undo_move`] needs to take it back. Moves and
+    /// null moves ([`Position::do_null_move`]) are undone in the reverse of
+    /// the order they were made, each move with its own [`Undo`].
     ///
     /// ⚠️ An illegal `mv` is not checked in release builds and corrupts the
     /// position silently.
@@ -215,13 +215,14 @@ impl Position {
     /// Undoes `mv`, the last move made with [`Position::do_move`], using the
     /// [`Undo`] that call returned.
     ///
-    /// ⚠️ A mismatched `mv`/[`Undo`] pair is not checked in release builds
-    /// and corrupts the position silently.
+    /// ⚠️ A mismatched `mv`/[`Undo`] pair, or a null move still in effect, is
+    /// not checked in release builds and corrupts the position silently.
     pub fn undo_move(&mut self, mv: Move, undo: Undo) {
         let side = self.side_to_move.flip();
         match mv {
             Move::Normal { from, to, promote } => {
                 let placed = self.piece_at(to).expect("undo_move: no piece to put back");
+                debug_assert_eq!(placed.color(), side, "undo_move: not the last move made");
                 self.remove_piece(to, placed);
                 let piece = if promote {
                     placed
@@ -238,6 +239,7 @@ impl Position {
                 }
             }
             Move::Drop { piece, to } => {
+                debug_assert_eq!(piece.color(), side, "undo_move: not the last move made");
                 self.remove_piece(to, piece);
                 self.add_to_hand(side, piece.piece_kind());
             }
@@ -246,6 +248,35 @@ impl Position {
         self.ply = self.ply.wrapping_sub(1);
         // Cheaper than reversing every XOR above.
         self.key = undo.key;
+    }
+
+    /// Passes the turn: the other player is to move, and nothing else
+    /// changes — for null-move pruning, or to ask what the opponent
+    /// threatens. Taken back with [`Position::undo_null_move`].
+    ///
+    /// The key becomes that of the same board with the other player to move.
+    /// [`Position::ply`] does not change, since a pass is not a move of the
+    /// game.
+    ///
+    /// ⚠️ The side to move must not be in check: passing would leave its king
+    /// en prise. Checked only by a `debug_assert!`.
+    pub fn do_null_move(&mut self) {
+        debug_assert!(
+            !self.in_check(),
+            "do_null_move: the side to move is in check"
+        );
+        self.side_to_move = self.side_to_move.flip();
+        self.key ^= zobrist::side_key();
+    }
+
+    /// Undoes the last [`Position::do_null_move`], in the order
+    /// [`Position::do_move`] states.
+    ///
+    /// ⚠️ A call that does not match a `do_null_move` is not checked and
+    /// corrupts the position silently.
+    pub fn undo_null_move(&mut self) {
+        self.side_to_move = self.side_to_move.flip();
+        self.key ^= zobrist::side_key();
     }
 
     /// This position with `piece` dropped on `to`. The drop must be legal
@@ -531,6 +562,62 @@ mod tests {
         let undo = next.do_move(advance);
         next.undo_move(advance, undo);
         assert_eq!(next, with_hand.with_drop(bishop, square));
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "the side to move is in check")]
+    fn null_move_in_check_panics_in_debug_builds() {
+        // 5i king in check from a white rook on 5e.
+        let mut partial = PartialPosition::empty();
+        for (file, rank, piece_kind, color) in [
+            (5, 9, PieceKind::King, Color::Black),
+            (5, 5, PieceKind::Rook, Color::White),
+            (5, 1, PieceKind::King, Color::White),
+        ] {
+            partial.piece_set(
+                Square::new(file, rank).unwrap(),
+                Some(Piece::new(piece_kind, color)),
+            );
+        }
+        Position::new(partial).do_null_move();
+    }
+
+    /// `undo_move` with a null move still in effect would take the move back
+    /// for the wrong side; the board-move arm.
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "undo_move: not the last move made")]
+    fn undo_move_under_a_null_move_panics_in_debug_builds() {
+        let mut position = Position::startpos();
+        let advance = mv((7, 7), (7, 6), false);
+        let undo = position.do_move(advance);
+        position.do_null_move();
+        position.undo_move(advance, undo);
+    }
+
+    /// The same for the drop arm.
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "undo_move: not the last move made")]
+    fn undo_drop_under_a_null_move_panics_in_debug_builds() {
+        // After the bishop exchange, Black has a bishop in hand.
+        let mut position = Position::startpos();
+        for m in [
+            mv((7, 7), (7, 6), false),
+            mv((3, 3), (3, 4), false),
+            mv((8, 8), (2, 2), true),
+            mv((3, 1), (2, 2), false),
+        ] {
+            position.do_move(m);
+        }
+        let drop = Move::Drop {
+            piece: Piece::new(PieceKind::Bishop, Color::Black),
+            to: Square::new(4, 5).unwrap(),
+        };
+        let undo = position.do_move(drop);
+        position.do_null_move();
+        position.undo_move(drop, undo);
     }
 
     #[test]
