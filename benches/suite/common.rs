@@ -17,9 +17,10 @@ pub const MOVE_BUF_CAPACITY: usize = MAX_LEGAL_MOVES;
 /// Capacity for one buffer threaded through a whole `perft` tree.
 ///
 /// Every ply from the root down to the leaf parents holds its own move list
-/// in the buffer at the same time, and no position contributes more than
-/// [`MAX_LEGAL_MOVES`], so this bound holds at **any** depth rather than only
-/// at the fixture depths.
+/// in the buffer at the same time, and every fixture holds no more of a kind
+/// than a standard set — nor does any position its tree reaches, since moves
+/// conserve material — so none contributes more than [`MAX_LEGAL_MOVES`], and
+/// this bound holds at **any** depth rather than only at the fixture depths.
 pub fn tree_buf_capacity(depth: u32) -> usize {
     MAX_LEGAL_MOVES * depth as usize
 }

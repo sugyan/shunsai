@@ -1,7 +1,7 @@
 //! Differential testing against `shogi_legality_lite`, the correctness oracle:
 //! random playouts from the fixed position set, asserting set-equality of the
 //! full legal-move sets at every node, plus Zobrist-key consistency between
-//! incremental updates and rebuilds.
+//! incremental updates and rebuilds, null moves included.
 
 use shogi_core::{Move, PartialPosition};
 use shogi_usi_parser::FromUsi;
@@ -48,6 +48,27 @@ fn assert_same_moves(partial: &PartialPosition, position: &Position, ply: usize)
     );
 }
 
+/// A null move must reach exactly the position rebuilt with only the side to
+/// move flipped — `PartialEq` compares every field, the side to move included —
+/// and taking it back must restore the position it was made in.
+fn assert_null_move_matches_rebuild(partial: &PartialPosition, position: &Position, ply: usize) {
+    let mut flipped = partial.clone();
+    flipped.side_to_move_set(partial.side_to_move().flip());
+    let mut passed = position.clone();
+    passed.do_null_move();
+    assert_eq!(
+        passed,
+        Position::new(flipped),
+        "null move disagrees with the rebuild at ply {ply} in\nsfen {}",
+        partial.to_sfen_owned()
+    );
+    passed.undo_null_move();
+    assert_eq!(
+        &passed, position,
+        "undo_null_move did not restore ply {ply}"
+    );
+}
+
 fn playout(start: &PartialPosition, games: u32, max_plies: u32, rng_seed: u64) {
     let mut state = rng_seed;
     for game in 0..games {
@@ -55,6 +76,9 @@ fn playout(start: &PartialPosition, games: u32, max_plies: u32, rng_seed: u64) {
         let mut position = Position::new(partial.clone());
         for ply in 0..max_plies {
             assert_same_moves(&partial, &position, ply as usize);
+            if !position.in_check() {
+                assert_null_move_matches_rebuild(&partial, &position, ply as usize);
+            }
             let moves = position.legal_moves();
             if moves.is_empty() {
                 break;

@@ -29,13 +29,17 @@ use crate::bitboard::Bitboard;
 use crate::position::Position;
 use crate::tables;
 
-/// The most legal moves any shogi position has: the move count of
+/// The most legal moves a position has when it holds no more of any kind than
+/// a standard set: the move count of
 /// `R8/2K1S1SSk/4B4/9/9/9/9/9/1L1L1L3 b RBGSNLP3g3n17p 1`, asserted by
 /// `max_moves_position`.
 ///
-/// An upper bound on the number of legal moves in any position, so a move
-/// buffer sized from it never grows; [`Position::legal_moves`] sizes its own
-/// `Vec` from it.
+/// An upper bound for every such position, so a move buffer sized from it
+/// never grows there; [`Position::legal_moves`] sizes its own `Vec` from it.
+///
+/// ⚠️ [`Position::new`] also accepts positions holding more of a kind than a
+/// standard set, and those can exceed it: a fixed-capacity buffer sized from
+/// it overflows there.
 pub const MAX_LEGAL_MOVES: usize = 593;
 
 /// A group of legal moves that share an origin, as handed to
@@ -262,6 +266,20 @@ impl Position {
             .is_empty(),
             None => false,
         }
+    }
+
+    /// The pieces of `color` that attack `square` when exactly the squares
+    /// in `occupied` are occupied.
+    ///
+    /// Pass [`Position::occupied`] for the board as it stands. A piece whose
+    /// square is not in `occupied` neither attacks nor blocks, so lifting
+    /// pieces out of it reveals the sliders behind them — what a static
+    /// exchange evaluation asks after each capture. Pins are not considered:
+    /// a pinned piece still attacks. Whether `square` itself is occupied
+    /// makes no difference.
+    pub fn attackers_to(&self, square: Square, occupied: Bitboard, color: Color) -> Bitboard {
+        let mask = self.player_bb(color) & occupied;
+        attackers_to(self, square, occupied, color, mask)
     }
 
     /// Whether `mv` checks the opponent's king — what [`Position::in_check`]
@@ -720,9 +738,8 @@ mod tests {
     }
 
     /// Which fixture covers what, and whether anything would notice its
-    /// removal. Five are individually held by a named liveness assertion; two
-    /// jointly hold one; two are corpus breadth, and dropping either of those
-    /// is silent.
+    /// removal. Six are individually held by a named liveness assertion; two
+    /// jointly hold one; one is corpus breadth, and dropping it is silent.
     const CALLBACK_POSITIONS: &[&str] = &[
         // Breadth: the ordinary opening shape, and the only position where
         // nothing can promote.
@@ -731,7 +748,9 @@ mod tests {
         // `dropped * 8 > nodes` margin in
         // `king_danger_agrees_with_the_unfiltered_scan`.
         "l6nl/5+P1gk/2np1S3/p1p4Pp/3P2Sp1/1PPb2P1P/P5GS1/R8/LN4bKL w GR5pnsg 1",
-        // Breadth: drop-heavy, and most of the node count.
+        // Drop-heavy, and most of the node count: without it
+        // `attackers_to_agrees_with_a_forward_scan` falls under its
+        // `nodes > 500`.
         "R8/2K1S1SSk/4B4/9/9/9/9/9/1L1L1L3 b RBGSNLP3g3n17p 1",
         // In check (a real game position), and — after Bx6h+ — the corpus's
         // only enemy *horse* held by the step term alone. Held by
@@ -1245,6 +1264,99 @@ mod tests {
         assert!(discovered > 0, "no discovered check reached");
         assert!(by_promotion > 0, "no check that only the promotion gives");
         assert!(by_drop > 0, "no drop gave check");
+    }
+
+    /// For every square, the pieces of `color` in `occupied` whose attack
+    /// set, built forwards from where each stands, reaches it — the public
+    /// `attackers_to`'s contract without the reverse lookup.
+    fn forward_attackers(
+        position: &Position,
+        occupied: Bitboard,
+        color: Color,
+    ) -> [Bitboard; Square::NUM] {
+        let mut attackers = [Bitboard::EMPTY; Square::NUM];
+        for from in position.player_bb(color) & occupied {
+            let piece = position.piece_at(from).unwrap();
+            for square in tables::attacks_of(piece, from, occupied) {
+                attackers[square.array_index()] |= Bitboard::single(from);
+            }
+        }
+        attackers
+    }
+
+    /// `Position::attackers_to` against the forward scan, for both colours on
+    /// every square, on the board as it stands, with every pawn lifted out of
+    /// `occupied` — the x-ray question a static exchange evaluation asks — and
+    /// with every square filled. Held over every position one ply deep from
+    /// each fixture.
+    #[test]
+    fn attackers_to_agrees_with_a_forward_scan() {
+        let mut nodes = 0;
+        // Each counts a case where one part of the public method would change
+        // the answer if dropped, which is what makes the agreement evidence:
+        // a lifted pawn reported without `& occupied`, the other colour's
+        // pieces reported without `player_bb(color)`, an attacker that lifting
+        // the pawns revealed, and one that filling the empty squares hid.
+        let mut lifted = 0;
+        let mut other_colour = 0;
+        let mut xrays = 0;
+        let mut hidden = 0;
+        for sfen in CALLBACK_POSITIONS {
+            let root = position_of(sfen);
+            let mut positions = vec![root.clone()];
+            for mv in root.legal_moves() {
+                let mut next = root.clone();
+                next.do_move(mv);
+                positions.push(next);
+            }
+            for position in &positions {
+                let full = position.occupied();
+                let no_pawns = full & !position.piece_kind_bb(PieceKind::Pawn);
+                for color in Color::all() {
+                    let on_full = forward_attackers(position, full, color);
+                    let on_no_pawns = forward_attackers(position, no_pawns, color);
+                    let on_all = forward_attackers(position, Bitboard::ALL, color);
+                    for square in Square::all() {
+                        let index = square.array_index();
+                        for (occupied, expected) in [
+                            (full, on_full[index]),
+                            (no_pawns, on_no_pawns[index]),
+                            (Bitboard::ALL, on_all[index]),
+                        ] {
+                            assert_eq!(
+                                position.attackers_to(square, occupied, color),
+                                expected,
+                                "attackers_to disagrees on {square:?} for {color:?} in\n{position:?}"
+                            );
+                            let unmasked = position.player_bb(color);
+                            if attackers_to(position, square, occupied, color, unmasked) != expected
+                            {
+                                lifted += 1;
+                            }
+                            if attackers_to(position, square, occupied, color, occupied) != expected
+                            {
+                                other_colour += 1;
+                            }
+                        }
+                        if !(on_no_pawns[index] & !on_full[index]).is_empty() {
+                            xrays += 1;
+                        }
+                        if !(on_full[index] & !on_all[index]).is_empty() {
+                            hidden += 1;
+                        }
+                    }
+                }
+                nodes += 1;
+            }
+        }
+        assert!(nodes > 500, "test covered only {nodes} nodes");
+        assert!(lifted > 0, "no lifted pawn was an attacker");
+        assert!(
+            other_colour > 0,
+            "dropping `player_bb(color)` from the mask never changed an answer"
+        );
+        assert!(xrays > 0, "lifting the pawns revealed no attacker");
+        assert!(hidden > 0, "filling the empty squares hid no attacker");
     }
 
     fn move_key(mv: Move) -> (u8, u8, u8, u8) {
