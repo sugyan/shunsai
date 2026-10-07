@@ -66,8 +66,8 @@ cargo bench --features _bench-internals
 ```
 
 The whole suite is one bench target (`benches/suite/`); without the feature the
-`internals` group is compiled out and the rest runs. Selecting a backend for the `perft/*`
-and `movegen/*` ids needs a rebuild:
+`internals` group is compiled out and the rest runs. Selecting a backend for the `perft/*`,
+`movegen/*` and `gives_check/*` ids needs a rebuild:
 
 ```bash
 cargo bench --features _bench-internals,slider-qugiy
