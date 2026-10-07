@@ -66,8 +66,8 @@ cargo bench --features _bench-internals
 ```
 
 The whole suite is one bench target (`benches/suite/`); without the feature the
-`internals` group is compiled out and the rest runs. Selecting a backend for the `perft/*`
-and `movegen/*` ids needs a rebuild:
+`internals` group is compiled out and the rest runs. Selecting a backend for the `perft/*`,
+`movegen/*` and `gives_check/*` ids needs a rebuild:
 
 ```bash
 cargo bench --features _bench-internals,slider-qugiy
@@ -100,6 +100,8 @@ is the [history](#history) below. The full suite takes roughly 3–5 minutes.
 | `movegen/sampled-v1-check` | same, restricted to the in-check subset (evasions) | Elements = positions |
 | `movegen/sampled-v1{,-check}-{cb,buf,wi}` | the same two sweeps through each path above | Elements = positions |
 | `do_undo/games-v1` | `do_move` all + `undo_move` all over 4 real games, the driver holding the `Undo` stack it allocated outside the measured loop | Elements = do+undo pairs |
+| `gives_check/sampled-v1` | `gives_check` asked of every legal move of the 40 sampled real-game positions | Elements = moves |
+| `gives_check/sampled-v1-make-unmake` | the same answers through `do_move` + `in_check` + `undo_move` | Elements = moves |
 | `internals/{bishop,rook,lance}-attacks` | the attack functions, 81 squares × 3 positions, against whichever backend is **live** | Elements = calls |
 | `internals/attackers-to` | the reverse-lookup attacker test behind legality checking | Elements = calls |
 | `internals/{bishop,rook}-attacks-{naive,qugiy,magic}` | the same sweep against each backend individually, in a single run | Elements = calls |

@@ -281,6 +281,59 @@ impl Position {
         let mask = self.player_bb(color) & occupied;
         attackers_to(self, square, occupied, color, mask)
     }
+
+    /// Whether `mv` checks the opponent's king — what [`Position::in_check`]
+    /// would answer after [`Position::do_move`], without making the move.
+    /// `false` when the opponent has no king.
+    ///
+    /// ⚠️ `mv` must be legal, in a position where the opponent is not
+    /// already in check (as no legal position has it). Both are checked only
+    /// by `debug_assert!`; otherwise the answer is unspecified, and it may
+    /// panic.
+    pub fn gives_check(&self, mv: Move) -> bool {
+        let us = self.side_to_move();
+        let Some(king) = self.king_square(us.flip()) else {
+            return false;
+        };
+        debug_assert!(
+            self.attackers_to(king, self.occupied(), us).is_empty(),
+            "gives_check: the opponent is already in check"
+        );
+        match mv {
+            // A drop vacates nothing, so it can only check directly.
+            Move::Drop { piece, to } => {
+                debug_assert_eq!(
+                    piece.color(),
+                    us,
+                    "gives_check: not the side to move's piece"
+                );
+                tables::attacks_of(piece, to, self.occupied()).contains(king)
+            }
+            Move::Normal { from, to, promote } => {
+                let piece = self.piece_at(from).expect("gives_check: no piece to move");
+                debug_assert_eq!(
+                    piece.color(),
+                    us,
+                    "gives_check: not the side to move's piece"
+                );
+                let placed = if promote {
+                    piece.promote().expect("gives_check: piece cannot promote")
+                } else {
+                    piece
+                };
+                let occupied = (self.occupied() ^ Bitboard::single(from)) | Bitboard::single(to);
+                if tables::attacks_of(placed, to, occupied).contains(king) {
+                    return true;
+                }
+                // Before the move nothing of ours reaches the king, so only a
+                // slider behind `from` can: vacating it opens no other line.
+                if tables::line(king, from).is_empty() {
+                    return false;
+                }
+                !self.attackers_to(king, occupied, us).is_empty()
+            }
+        }
+    }
 }
 
 /// The pieces of `attackers_color`, restricted to `mask`, that attack
@@ -1132,6 +1185,244 @@ mod tests {
         // whole suite including the deep perft values.
         assert!(doubles > 0, "no double check reached; the OR is untested");
         assert!(double_pins > 0, "no double pin reached; the OR is untested");
+    }
+
+    /// The positions only `gives_check_agrees_with_making_the_move` walks,
+    /// on top of `CALLBACK_POSITIONS`. Each reaches a configuration none of
+    /// those does, and is held by the counter its comment names.
+    const GIVES_CHECK_POSITIONS: &[&str] = &[
+        // Discovered checks along each kind of line: a lance through the
+        // silver on 5e, a bishop through the knight on 7c, a rook through the
+        // gold on 3a. The only source of `on_diagonal`; `by_lance` and
+        // `on_rank` it shares with the capture and adjacent fixtures below.
+        "4k1G1R/9/2N6/9/B3S4/9/9/9/K3L4 b - 1",
+        // A king move that discovers check: K5e off the file uncovers the
+        // rook on 5i (`by_king`).
+        "4k4/9/9/9/4K4/9/9/9/4R4 b - 1",
+        // A discoverer next to the enemy king, where `between(king, from)` is
+        // empty and `line(king, from)` is not: the silver on 4a uncovers the
+        // rook on 1a (`adjacent`).
+        "4kS2R/9/9/9/9/9/9/9/K8 b - 1",
+        // A capture that discovers check: S5e takes the gold on 4d and
+        // uncovers the lance on 5i (`by_capture`).
+        "4k4/9/9/5g3/4S4/9/9/9/K3L4 b - 1",
+        // A capture from a square on a line through the king, whose victim,
+        // as ours, would attack the king from `to` though the capturer does
+        // not: R6b takes the gold on 4b (`stale_capture`). `piece_kind_bb`
+        // still holds the gold there, so a discovered-check mask that admits
+        // `to` reads it as ours. The corpus has such captures only off the
+        // king's lines, where that mask is never consulted.
+        "4k4/3R1g3/9/9/9/9/9/9/8K b - 1",
+        // Black has no king, so one ply down every White move meets the
+        // "`false` when the opponent has no king" arm (`kingless`).
+        "4k4/9/4G4/9/9/9/9/9/9 b - 1",
+    ];
+
+    /// `gives_check` against making the move and asking `in_check`, for
+    /// every legal move of each fixture and of every position one ply from it.
+    #[test]
+    fn gives_check_agrees_with_making_the_move() {
+        /// Each counter is a configuration that only one part of
+        /// `gives_check` handles, counted only where no other part would also
+        /// find the check, so deleting that part — or the fixture that
+        /// reaches it — fails here. The discovered-check counters count only
+        /// checks the moved piece does not give itself.
+        #[derive(Default)]
+        struct Reached {
+            nodes: u64,
+            skipped: u64,
+            by_lance: u64,
+            on_diagonal: u64,
+            on_rank: u64,
+            by_king: u64,
+            adjacent: u64,
+            by_capture: u64,
+            stale_capture: u64,
+            by_promotion: u64,
+            by_drop: u64,
+            kingless: u64,
+        }
+        fn walk(position: &mut Position, depth: u32, reached: &mut Reached) {
+            let us = position.side_to_move();
+            // A position whose side *not* to move is already in check is
+            // outside `gives_check`'s contract. Its children are legal, so it
+            // is walked but not asked, and counted.
+            let legal = !position.king_square(us.flip()).is_some_and(|king| {
+                let occupied = position.occupied();
+                !attackers_to(position, king, occupied, us, position.player_bb(us)).is_empty()
+            });
+            if legal {
+                reached.nodes += 1;
+            } else {
+                reached.skipped += 1;
+            }
+            for mv in position.legal_moves() {
+                let captured = match mv {
+                    Move::Normal { to, .. } => position.piece_at(to),
+                    Move::Drop { .. } => None,
+                };
+                let undo = position.do_move(mv);
+                let expected = position.in_check();
+                if legal {
+                    match position.king_square(us.flip()) {
+                        Some(king) => count(position, mv, captured, king, expected, reached),
+                        None => reached.kingless += 1,
+                    }
+                }
+                if depth > 1 {
+                    walk(position, depth - 1, reached);
+                }
+                position.undo_move(mv, undo);
+                if legal {
+                    assert_eq!(
+                        position.gives_check(mv),
+                        expected,
+                        "gives_check disagrees on {mv:?} in\n{position:?}"
+                    );
+                }
+            }
+        }
+        /// Classifies `mv`, already made, by which part of `gives_check`
+        /// alone could answer it.
+        fn count(
+            position: &Position,
+            mv: Move,
+            captured: Option<Piece>,
+            king: Square,
+            gives_check: bool,
+            reached: &mut Reached,
+        ) {
+            let us = position.side_to_move().flip();
+            let occupied = position.occupied();
+            let checkers = attackers_to(position, king, occupied, us, position.player_bb(us));
+            let Move::Normal { from, to, promote } = mv else {
+                if gives_check {
+                    reached.by_drop += 1;
+                }
+                return;
+            };
+            if !gives_check {
+                // Only a `from` on a line through the king reaches the
+                // discovered-check query, which is where the mask matters.
+                if let Some(victim) = captured
+                    && !tables::line(king, from).is_empty()
+                    && tables::attacks_of(Piece::new(victim.piece_kind(), us), to, occupied)
+                        .contains(king)
+                {
+                    reached.stale_capture += 1;
+                }
+                return;
+            }
+            let moved = position.piece_at(to).unwrap();
+            if checkers == Bitboard::single(to) {
+                let unpromoted = if promote {
+                    moved.unpromote().unwrap()
+                } else {
+                    moved
+                };
+                if !tables::attacks_of(unpromoted, to, occupied).contains(king) {
+                    reached.by_promotion += 1;
+                }
+            }
+            if checkers.contains(to) {
+                return;
+            }
+            for revealed in checkers {
+                if position.piece_at(revealed).unwrap().piece_kind() == PieceKind::Lance {
+                    reached.by_lance += 1;
+                } else if revealed.rank() == king.rank() {
+                    reached.on_rank += 1;
+                } else if revealed.file() != king.file() {
+                    reached.on_diagonal += 1;
+                }
+            }
+            if moved.piece_kind() == PieceKind::King {
+                reached.by_king += 1;
+            }
+            if tables::between(king, from).is_empty() {
+                reached.adjacent += 1;
+            }
+            if captured.is_some() {
+                reached.by_capture += 1;
+            }
+        }
+        let mut reached = Reached::default();
+        for sfen in CALLBACK_POSITIONS.iter().chain(GIVES_CHECK_POSITIONS) {
+            walk(&mut position_of(sfen), 2, &mut reached);
+        }
+        let Reached {
+            nodes,
+            skipped,
+            by_lance,
+            on_diagonal,
+            on_rank,
+            by_king,
+            adjacent,
+            by_capture,
+            stale_capture,
+            by_promotion,
+            by_drop,
+            kingless,
+        } = reached;
+        assert!(nodes > 500, "test covered only {nodes} nodes");
+        assert_eq!(
+            skipped, 1,
+            "only the `k4+R3/…` root (#61) should fall outside the contract"
+        );
+        assert!(by_lance > 0, "no discovered check by a lance");
+        assert!(on_diagonal > 0, "no discovered check on a diagonal");
+        assert!(on_rank > 0, "no discovered check along a rank");
+        assert!(by_king > 0, "no king move discovered check");
+        assert!(adjacent > 0, "no discoverer stood next to the king");
+        assert!(by_capture > 0, "no capture discovered check");
+        assert!(
+            stale_capture > 0,
+            "no aligned capture whose victim, as ours, would attack the king"
+        );
+        assert!(by_promotion > 0, "no check that only the promotion gives");
+        assert!(by_drop > 0, "no drop gave check");
+        assert!(kingless > 0, "no move asked against a kingless opponent");
+    }
+
+    /// A Black drop asked in a White-to-move position, which is what a USI
+    /// parser that assumes Black hands over for `P*5h`.
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "gives_check: not the side to move's piece")]
+    fn gives_check_of_the_other_sides_drop_panics_in_debug_builds() {
+        let position = position_of("4k4/9/9/9/9/9/9/9/4K4 w p 1");
+        let _ = position.gives_check(Move::Drop {
+            piece: Piece::new(PieceKind::Pawn, Color::Black),
+            to: Square::new(5, 8).unwrap(),
+        });
+    }
+
+    /// The same for a board move: Black's king asked to move with White to
+    /// move.
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "gives_check: not the side to move's piece")]
+    fn gives_check_of_the_other_sides_move_panics_in_debug_builds() {
+        let position = position_of("4k4/9/9/9/9/9/9/9/4K4 w - 1");
+        let _ = position.gives_check(Move::Normal {
+            from: Square::new(5, 9).unwrap(),
+            to: Square::new(5, 8).unwrap(),
+            promote: false,
+        });
+    }
+
+    /// The `k4+R3/…` fixture's root: Black to move with White already in
+    /// check.
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "gives_check: the opponent is already in check")]
+    fn gives_check_with_the_opponent_in_check_panics_in_debug_builds() {
+        let position = position_of("k4+R3/9/8+B/9/9/9/9/9/4K4 b - 1");
+        let _ = position.gives_check(Move::Normal {
+            from: Square::new(5, 9).unwrap(),
+            to: Square::new(5, 8).unwrap(),
+            promote: false,
+        });
     }
 
     /// For every square, the pieces of `color` in `occupied` whose attack
