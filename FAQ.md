@@ -228,6 +228,22 @@ hot loop: the sweep walks 81 origins where `check_info` asks about one square pe
 its table lines are already warm. That is the obvious explanation and it is **not
 verified**.
 
+### Why is `gives_check` computed per move rather than from a per-position table?
+
+#55 proposed the usual shape: per position, the squares from which each piece kind would
+check, and our pieces blocking our sliders from their king, built once and reused across a
+move list. **It was not built.** What shipped
+([#60](https://github.com/sugyan/shunsai/pull/60)) asks per move: the placed piece's
+attacks from `to`, then `attackers_to` only when `from` is on a line through the king. It
+was adopted against the make/unmake round trip it replaces
+(`gives_check/sampled-v1` against `gives_check/sampled-v1-make-unmake`), never against the
+per-position alternative.
+
+**Reopens if** a caller asks whole lists — check generation in quiescence, a mate solver's
+attacker nodes — and the per-move cost shows in its profile. The per-position variant is
+then measured against `gives_check/sampled-v1`, after the two cheaper per-move pre-tests of
+[#63](https://github.com/sugyan/shunsai/issues/63).
+
 ### Why does the pawn-drop-mate simulation not clone, and what guards it?
 
 Removing the clone is what made generation allocate nothing
