@@ -29,8 +29,8 @@ use crate::bitboard::Bitboard;
 use crate::position::Position;
 use crate::tables;
 
-/// The most legal moves a position has when it holds no more of any kind than
-/// a standard set: the move count of
+/// The most legal moves a position has when both kings are on the board and
+/// it holds no more of any kind than a standard set: the move count of
 /// `R8/2K1S1SSk/4B4/9/9/9/9/9/1L1L1L3 b RBGSNLP3g3n17p 1`, asserted by
 /// `max_moves_position`.
 ///
@@ -38,8 +38,9 @@ use crate::tables;
 /// never grows there; [`Position::legal_moves`] sizes its own `Vec` from it.
 ///
 /// ⚠️ [`Position::new`] also accepts positions holding more of a kind than a
-/// standard set, and those can exceed it: a fixed-capacity buffer sized from
-/// it overflows there.
+/// standard set, and positions where a side has no king (as in tsume-shogi
+/// problems). Both can exceed it: a fixed-capacity buffer sized from it
+/// overflows there.
 pub const MAX_LEGAL_MOVES: usize = 593;
 
 /// A group of legal moves that share an origin, as handed to
@@ -287,9 +288,9 @@ impl Position {
     /// `false` when the opponent has no king.
     ///
     /// ⚠️ `mv` must be legal, in a position where the opponent is not
-    /// already in check (as no legal position has it). Both are checked only
-    /// by `debug_assert!`; otherwise the answer is unspecified, and it may
-    /// panic.
+    /// already in check (as no legal position has it); otherwise the answer
+    /// is unspecified, and it may panic. Debug builds also catch a move of
+    /// the other side's piece and an opponent already in check.
     pub fn gives_check(&self, mv: Move) -> bool {
         let us = self.side_to_move();
         let Some(king) = self.king_square(us.flip()) else {
