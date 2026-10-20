@@ -169,8 +169,10 @@ impl Position {
     /// null moves ([`Position::do_null_move`]) are undone in the reverse of
     /// the order they were made, each move with its own [`Undo`].
     ///
-    /// ⚠️ An illegal `mv` is not checked in release builds and corrupts the
-    /// position silently.
+    /// ⚠️ An illegal `mv` is not validated: it may panic, and otherwise
+    /// corrupts the position silently. Debug builds also catch a piece of the
+    /// wrong colour, a capture of one's own piece, and a drop onto an
+    /// occupied square.
     pub fn do_move(&mut self, mv: Move) -> Undo {
         let side = self.side_to_move;
         let captured = match mv {
@@ -216,7 +218,9 @@ impl Position {
     /// [`Undo`] that call returned.
     ///
     /// ⚠️ A mismatched `mv`/[`Undo`] pair, or a null move still in effect, is
-    /// not checked in release builds and corrupts the position silently.
+    /// not validated: it may panic, and otherwise corrupts the position
+    /// silently. Debug builds catch more, such as a move taken back for the
+    /// wrong side, which is what a null move still in effect causes.
     pub fn undo_move(&mut self, mv: Move, undo: Undo) {
         let side = self.side_to_move.flip();
         match mv {

@@ -118,9 +118,10 @@ fn main() {
     // Allocated once, outside every timed region: the point of the
     // materializing driver is that the tree walk itself never allocates.
     // Every ply from the root down to the leaf parents holds its own move
-    // list at the same time, each within MAX_LEGAL_MOVES for a root holding
-    // no more of a kind than a standard set — moves conserve material, so
-    // the whole tree does — and then this cannot grow at the requested depth.
+    // list at the same time, each within MAX_LEGAL_MOVES for a root with both
+    // kings holding no more of a kind than a standard set — moves conserve
+    // material and never take a king, so the whole tree does — and then this
+    // cannot grow at the requested depth.
     let mut buf = Vec::with_capacity(MAX_LEGAL_MOVES * depth as usize);
     println!(
         "convention: leaf-parent bulk counting, {}",
