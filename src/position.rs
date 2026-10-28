@@ -49,6 +49,11 @@ impl Position {
     /// piece kind, a promoted piece counting as the kind it demotes to. A
     /// capture could then carry a hand past what [`Hand`] can count, so the
     /// position is refused here rather than failing on a later move.
+    ///
+    /// If one colour has more than one king. [`Position`] tracks a single king
+    /// per colour, so move generation would treat the others as ordinary
+    /// pieces, and offer to capture them with a move [`Position::do_move`]
+    /// cannot make.
     pub fn new(partial: PartialPosition) -> Self {
         let hands = [
             partial.hand_of_a_player(Color::Black),
@@ -68,6 +73,11 @@ impl Position {
             if let Some(piece) = partial.piece_at(square) {
                 position.put_piece(square, piece);
             }
+        }
+        for color in Color::all() {
+            let kings = position.piece_bb[PieceKind::King.array_index()]
+                & position.color_bb[color.array_index()];
+            assert!(kings.count() <= 1, "more than one {color:?} king");
         }
         for piece_kind in Hand::all_hand_pieces() {
             // Moves only carry pieces between the board and the hands, so
@@ -394,6 +404,7 @@ impl Default for Position {
 }
 
 impl From<PartialPosition> for Position {
+    /// Builds the position with [`Position::new`], and panics where it does.
     fn from(partial: PartialPosition) -> Self {
         Self::new(partial)
     }
@@ -795,6 +806,32 @@ mod tests {
             }
         }
         Position::new(partial);
+    }
+
+    /// Issue #62: two kings of `color` and nothing else, Black to move. A
+    /// check of the kings' total accepts both colours' fixtures, and a check
+    /// of one colour only, or of one side to move only, accepts one of them.
+    fn two_kings_of(color: Color) {
+        let mut partial = PartialPosition::empty();
+        for file in [9, 1] {
+            partial.piece_set(
+                Square::new(file, 1).unwrap(),
+                Some(Piece::new(PieceKind::King, color)),
+            );
+        }
+        Position::new(partial);
+    }
+
+    #[test]
+    #[should_panic(expected = "more than one White king")]
+    fn two_white_kings_are_refused_at_construction() {
+        two_kings_of(Color::White);
+    }
+
+    #[test]
+    #[should_panic(expected = "more than one Black king")]
+    fn two_black_kings_are_refused_at_construction() {
+        two_kings_of(Color::Black);
     }
 
     /// The one condition `add_to_hand`'s `expect` can report: a captured king,
