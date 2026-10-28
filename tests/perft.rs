@@ -7,6 +7,8 @@ use shunsai::{MAX_LEGAL_MOVES, Position};
 use std::ops::ControlFlow;
 
 const MAX_MOVES_SFEN: &str = "R8/2K1S1SSk/4B4/9/9/9/9/9/1L1L1L3 b RBGSNLP3g3n17p 1";
+/// `MAX_MOVES_SFEN` without White's king on 1b.
+const KINGLESS_MAX_MOVES_SFEN: &str = "R8/2K1S1SS1/4B4/9/9/9/9/9/1L1L1L3 b RBGSNLP3g3n17p 1";
 /// Seven rooks and six bishops: more of a kind than a standard set holds.
 const OVER_STANDARD_SFEN: &str = "4k4/7+R1/1+B7/3+B5/1+R7/7+R1/2+R1+B1+R2/4+B3+B/K3+R4 b RBGSNLP 1";
 const MATSURI_SFEN: &str = "l6nl/5+P1gk/2np1S3/p1p4Pp/3P2Sp1/1PPb2P1P/P5GS1/R8/LN4bKL w GR5pnsg 1";
@@ -97,14 +99,26 @@ fn max_moves_position() {
     assert_eq!(perft_sfen(MAX_MOVES_SFEN, 2), 105677);
 }
 
-/// `MAX_LEGAL_MOVES` bounds a standard set's material only. Past it, a
-/// position `Position::new` accepts has more; the 600 moves matched
-/// `shogi_legality_lite` 0.1's full legal-move set, move for move, on
-/// 2026-09-25.
+/// `MAX_LEGAL_MOVES` bounds only positions with both kings and a standard
+/// set's material. Past that material, a position `Position::new` accepts
+/// has more; the 600 moves matched `shogi_legality_lite` 0.1's full
+/// legal-move set, move for move, on 2026-09-25.
 #[test]
 fn more_than_a_standard_set_can_exceed_max_legal_moves() {
     let moves = perft_sfen(OVER_STANDARD_SFEN, 1);
     assert_eq!(moves, 600);
+    assert!(moves > MAX_LEGAL_MOVES as u64);
+}
+
+/// The other way past the bound: the max-moves position with the defending
+/// king lifted off, which frees 1b for six more drops (every hand piece but
+/// the knight, which could not move from there). The 599 moves matched
+/// `shogi_legality_lite` 0.1's full legal-move set, move for move, on
+/// 2026-10-20.
+#[test]
+fn a_missing_king_can_exceed_max_legal_moves() {
+    let moves = perft_sfen(KINGLESS_MAX_MOVES_SFEN, 1);
+    assert_eq!(moves, 599);
     assert!(moves > MAX_LEGAL_MOVES as u64);
 }
 
