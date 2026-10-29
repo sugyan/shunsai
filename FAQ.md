@@ -244,6 +244,15 @@ attacker nodes — and the per-move cost shows in its profile. The per-position 
 then measured against `gives_check/sampled-v1`, after the two cheaper per-move pre-tests of
 [#63](https://github.com/sugyan/shunsai/issues/63).
 
+### Why does `Position::new` refuse two kings of one colour?
+
+Its `# Panics` section gives the reason, and
+[#62](https://github.com/sugyan/shunsai/issues/62) the measurement. **Not taken:** masking
+every enemy king in `generate_legal`, an extra AND on movegen's hot path for positions no
+game of shogi reaches — and not enough: the side to move's untracked king would still be
+moved as an ordinary piece, into check, and `undo_move` would not restore which king is
+tracked.
+
 ### Why does the pawn-drop-mate simulation not clone, and what guards it?
 
 Removing the clone is what made generation allocate nothing
