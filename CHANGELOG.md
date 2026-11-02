@@ -7,22 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.3](https://github.com/sugyan/shunsai/compare/v0.1.2...v0.1.3) - 2026-10-29
+## [0.1.3](https://github.com/sugyan/shunsai/compare/v0.1.2...v0.1.3) - 2026-11-02
 
 ### Added
 
 - add gives_check, which answers whether a move checks without making it (4x faster than make/unmake) ([#60](https://github.com/sugyan/shunsai/pull/60))
 - make attackers_to public and add a null move (for SEE and null-move pruning) ([#59](https://github.com/sugyan/shunsai/pull/59))
-- expose MAX_LEGAL_MOVES, the move-buffer bound a search needs ([#52](https://github.com/sugyan/shunsai/pull/52))
+- expose MAX_LEGAL_MOVES, the move-buffer bound for a position with both kings and no more of any kind than a standard set ([#52](https://github.com/sugyan/shunsai/pull/52))
 
 ### Documentation
 
-- bound MAX_LEGAL_MOVES to positions with both kings, and say what debug builds actually check ([#64](https://github.com/sugyan/shunsai/pull/64))
+- promise that key() is stable across releases, and state what do_move and undo_move do not validate ([#52](https://github.com/sugyan/shunsai/pull/52), [#64](https://github.com/sugyan/shunsai/pull/64))
 - consolidate decision and design docs into FAQ.md ([#49](https://github.com/sugyan/shunsai/pull/49))
 
 ### Fixed
 
-- refuse two kings of one colour in Position::new, so legal_moves never offers a king capture ([#65](https://github.com/sugyan/shunsai/pull/65))
+- make Position::new, and so `From<PartialPosition>`, panic on two kings of one colour, which 0.1.2 accepted, so legal_moves never offers a king capture ([#65](https://github.com/sugyan/shunsai/pull/65))
 - hash every hand a Hand can hold and refuse the rest at construction, so no capture panics mid-search ([#57](https://github.com/sugyan/shunsai/pull/57))
 
 ### Internal
@@ -34,7 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - const-evaluate the Zobrist keys, so undo_move's dead XORs can be eliminated (-21.7% on do_undo) ([#37](https://github.com/sugyan/shunsai/pull/37))
 
-## [0.1.2](https://github.com/sugyan/shunsai/compare/v0.1.1...v0.1.2) - 2026-08-15
+## [0.1.2](https://github.com/sugyan/shunsai/compare/v0.1.1...v0.1.2) - 2026-08-16
 
 ### Internal
 
